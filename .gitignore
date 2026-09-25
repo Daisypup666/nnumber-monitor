@@ -1,0 +1,22 @@
+
+# Python virtual environment
+.venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# FAA downloaded data
+data/*.zip
+data/faa_archive/
+
+# SQLite database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# VS Code
+.vscode/
+
+# Environment/secrets
+.env
