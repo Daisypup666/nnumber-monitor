@@ -1,4 +1,5 @@
 from database import (
+    get_removed_reservations,
     initialize_database,
     save_candidates,
     count_snapshots,
@@ -6,7 +7,8 @@ from database import (
     #count_duplicate_snapshots,
     save_reservations,
     count_reservation_snapshots,
-    get_snapshot_dates
+    get_snapshot_dates,
+    get_removed_reservations,
 )
 from faa_downloader import (
     #show_data_directory,
@@ -16,16 +18,18 @@ from faa_downloader import (
     #commented out as they are no longer
     #used only used for exploration of the zip file
     find_upcoming_purges,
+    get_snapshot_date_from_path,
     load_reservations,
     check_faa_connection,
 )
 
 
 
+
 def main():
     print("N-number Monitor")
     print("Starting application...")
-    faa_zip_path = check_faa_connection()
+    faa_zip_path, data_changed = check_faa_connection()
     initialize_database()
 
     #show_data_directory()
@@ -42,8 +46,18 @@ def main():
    #no filter in place atm
     reservations = load_reservations(faa_zip_path)
     print("Total FAA reservation records:", len(reservations))
-
-    save_reservations(reservations)
+   
+   #old method:
+   # snapshot_date = date.today().isoformat()
+    snapshot_date = get_snapshot_date_from_path(faa_zip_path)
+  
+    if data_changed:
+        save_reservations(reservations, snapshot_date)
+        print("New FAA snapshot saved. ")
+    else:
+        print("Data has not changed since the last snapshot.")
+   
+    save_reservations(reservations, snapshot_date)
 
     print(
         "FAA reservation snapshots stored:",
@@ -77,8 +91,13 @@ def main():
     if len(snapshot_dates) < 2:
         print("waiting for another FAA snapshot before comparing changes.")
 
-    #else:
-        #comapre newest two snapshots
+    else:
+        current_date = snapshot_dates[0]
+        previous_date = snapshot_dates[1]
+
+        removed_reservations = get_removed_reservations(
+
+        )
 
 
 if __name__ == "__main__":

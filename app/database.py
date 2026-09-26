@@ -100,12 +100,12 @@ def save_candidates(candidates):
             observed_date,
         ))
 
-def save_reservations(reservations):
+def save_reservations(reservations, observed_date):
     connection = sqlite3.connect(DATABASE_PATH)
 
     for reservation in reservations:
         purge_date = reservation["purge_date"]
-        observed_date = date.today().isoformat()
+    #    observed_date = date.today().isoformat()
         #some FAA reservations do not have a purge date.
         #only convert it to text if a date actually exists
         if purge_date is not None:
@@ -206,4 +206,22 @@ def get_snapshot_dates():
 
     connection.close
 
+    return [row[0] for row in rows]
+
+def get_removed_reservations(current_date, previous_date):
+    connection = sqlite3.connect(DATABASE_PATH)
+    cursor = connection.execute("""
+        SELECT n_number
+        FROM faa_reservation_snapshopts
+        WHERE observed_date = ?
+    
+        EXCEPT
+
+        SELECT n_number
+        FROM faa_reservation_snapshots
+        WHERE observed_date = ? 
+    """, (previous_date, current_date))
+
+    rows = cursor.fetchall()
+    connection.close()
     return [row[0] for row in rows]

@@ -15,6 +15,10 @@ def show_data_directory():
     FAA_ZIP_PATH = DATA_DIR / "ReleasableAircraft.zip"
 #    TEMP_ZIP_PATH = DATA_DIR / "ReleasableAircraft.zip"
 
+def get_snapshot_date_from_path(zip_path):
+    filename = zip_path.stem
+    date_text = filename.replace("ReleasableAircraft_", "")
+    return date_text
 
 def check_faa_connection():
     
@@ -59,10 +63,25 @@ def check_faa_connection():
 
     print(f"FAA ZIP hash: {file_hash}")
 
+    previous_zip = get_previous_archive(zip_path)
+    if previous_zip is None:
+        print("No previous FAA archive available for comparison.")
+        data_changed = True
+    
+    else:
+        previous_hash = calculate_file_hash(previous_zip)
+
+        if file_hash == previous_hash:
+            print("FAA ZIP has not changed since the last archive.")
+            data_changed = False
+        else:
+            print("FAA ZIP has changed since the last archive.")
+            data_changed = True
+
     #starilizes archives
     cleanup_faa_archive(7)
 
-    return zip_path
+    return zip_path, data_changed
 
 #troubleshooting
 #    with open(TEMP_ZIP_PATH, "wb") as file:
@@ -239,3 +258,15 @@ def calculate_file_hash(file_path):
             sha256.update(chunk)
 
     return sha256.hexdigest()
+
+def get_previous_archive(current_zip_path):
+    zip_files = sorted(
+        FAA_ARCHIVE_DIR.glob("ReleasableAircraft_*.zip"),
+        reverse=True
+    )
+
+    for zip_file in zip_files:
+        if zip_file != current_zip_path:
+            return zip_file
+
+    return None
