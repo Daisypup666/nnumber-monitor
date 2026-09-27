@@ -9,6 +9,7 @@ from database import (
     count_reservation_snapshots,
     get_snapshot_dates,
     get_removed_reservations,
+    get_reservation_details,
 )
 from faa_downloader import (
     #show_data_directory,
@@ -21,6 +22,8 @@ from faa_downloader import (
     get_snapshot_date_from_path,
     load_reservations,
     check_faa_connection,
+    preview_master_data,
+    load_registered_n_numbers,
 )
 from pathlib import Path
 
@@ -41,6 +44,11 @@ def main():
     print("Starting application...")
     faa_zip_path, data_changed = check_faa_connection()
     initialize_database()
+    #testing preview master data 
+    #print("\nFirst 5 rows of MASTER.text:")
+    #preview_master_data(faa_zip_path)
+
+
    # print("TEST: about to import Sept 25")
     #temp to ts previous dates path not getting snap shotted
     #archive_path = Path(
@@ -68,13 +76,19 @@ def main():
 
 
 
-    #29 -36 commented out as debug/exploation output
-
+    # commented out as debug/exploation output
    # print("\nReservations purging within 30 days:") 
    #no filter in place atm
     reservations = load_reservations(faa_zip_path)
     print("Total FAA reservation records:", len(reservations))
-   
+
+    registered_n_numbers = load_registered_n_numbers(faa_zip_path)
+    print(
+        "Registered aircraft N-numbers loaded:",
+        len(registered_n_numbers)
+    )
+    print("Total FAA reservation records:", len(reservations))
+
    #old method:
    # snapshot_date = date.today().isoformat()
     snapshot_date = get_snapshot_date_from_path(faa_zip_path)
@@ -88,35 +102,13 @@ def main():
     else:
         print("Data has not changed since the last snapshot.")
    
-    save_reservations(reservations, snapshot_date)
-
+  
     print(
         "FAA reservation snapshots stored:",
         count_reservation_snapshots() 
     )
 
-    # checks canidates in the zip file downloaded
-    #save_candidates(candidates)
-    #no candidates yet
-    candidates = find_upcoming_purges(reservations, 30)
-
-   # save_candidates(candidates)
-
-   # print("\nReservations purging within 30 days:")
-
-#    for candidate in candidates:
-#        print("N-Number:", candidate["n_number"])
-#        print("Registrant:", candidate["registrant"])
-#        print("Type:", candidate["reservation_type"])
-#        print("Category:", candidate["category"])
-#        print("Purge Date:", candidate["purge_date"])
-#        print("Days Until Purge:", candidate["days_until_purge"])
-#        print("----------------")
-
-   # print("Total candidates:", len(candidates))
-   # print("candidate snapshots stored:", count_snapshots())
-    #checks the sql if duplicates exisit
-   # print("Duplicate snapshot groups:", count_duplicate_snapshots)
+   
 
     snapshot_dates = get_snapshot_dates()
     print("Snapshot dates:", snapshot_dates)
@@ -137,10 +129,63 @@ def main():
             "N-numbers removed from the reservation list:",
             len(removed_reservations)
         )
+        registered_count = 0
+        flagged_count = 0
         for n_number in removed_reservations:
-            print(n_number)
+            details = get_reservation_details(
+                n_number,
+                previous_date
+            )
+            if details:
+                print("\nN_number:", details[0])
+                print("Registrant:", details[1])
+                print("Reservation Type:", details[2])
+                print("Category:", details[3])
+                print("Purge Date:", details[4])
+                print("Last Date:", details[5])
+                if n_number in registered_n_numbers:
+                    print("Status: REGISTERED AIRCRAFT")
+                    registered_count += 1
+                else:
+                    print("Status: FLAG FOR REVIEW")
+                    flagged_count += 1
+        print("\n--- Comparison Sumarry --")
+        print("Removed reservations:", len(removed_reservations))
+        print("Registered aircraft:", registered_count)
+        print("Flagged for review:", flagged_count)
 
+    # checks canidates in the zip file downloaded
+        #save_candidates(candidates)
+        #no candidates yet
+        candidates = find_upcoming_purges(reservations, 30)
 
+    # save_candidates(candidates)
+
+    # print("\nReservations purging within 30 days:")
+
+    #    for candidate in candidates:
+    #        print("N-Number:", candidate["n_number"])
+    #        print("Registrant:", candidate["registrant"])
+    #        print("Type:", candidate["reservation_type"])
+    #        print("Category:", candidate["category"])
+    #        print("Purge Date:", candidate["purge_date"])
+    #        print("Days Until Purge:", candidate["days_until_purge"])
+    #        print("----------------")
+
+    # print("Total candidates:", len(candidates))
+    # print("candidate snapshots stored:", count_snapshots())
+        #checks the sql if duplicates exisit
+    # print("Duplicate snapshot groups:", count_duplicate_snapshots)
+
+            #tests the details loopup on the first removed n_number
+            #if removed_reservations:
+            #   first_removed = removed_reservations[0]
+            #  details = get_reservation_details(
+            #     first_removed, 
+                #    previous_date
+                #   )
+                #print("\nTest removed reservations:")
+                #print(details)
 
 if __name__ == "__main__":
     main()

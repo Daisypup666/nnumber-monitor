@@ -112,6 +112,13 @@ def preview_reserved_data():
                 line = reserved_file.readline()
                 print(line.decode("utf-8").strip())
 
+def preview_master_data(zip_path):
+    with zipfile.ZipFile(zip_path, "r") as faa_zip:
+        with faa_zip.open("MASTER.txt") as master_file:
+            text_file = io.TextIOWrapper(master_file)
+
+            for _ in range(5):
+                print(text_file.readline().strip())
 
 def parse_faa_date(date_string):
     if not date_string:
@@ -239,6 +246,24 @@ def load_reservations(zip_path):
 
                     reservations.append(reservation)
         return reservations
+
+def load_registered_n_numbers(zip_path):
+    registered_n_numbers = set()
+
+    with zipfile.ZipFile(zip_path, "r") as faa_zip:
+        text_file = io.TextIOWrapper(
+            faa_zip.open("MASTER.txt"),
+            encoding="utf-8-sig"
+        )
+
+        reader = csv.DictReader(text_file)
+
+        for row in reader:
+            n_number = row["N-NUMBER"].strip()
+
+            if n_number:
+                registered_n_numbers.add(n_number)
+    return registered_n_numbers
 
 def calculate_file_hash(file_path):
     sha256 = hashlib.sha256()

@@ -225,3 +225,21 @@ def get_removed_reservations(current_date, previous_date):
     rows = cursor.fetchall()
     connection.close()
     return [row[0] for row in rows]
+
+def get_reservation_details(n_number, observed_date):
+    connection = sqlite3.connect(DATABASE_PATH)
+    cursor = connection.execute("""
+        SELECT 
+            n_number,
+            registrant,
+            reservation_type,
+            category,
+            purge_date,
+            observed_date
+        FROM faa_reservation_snapshots
+        WHERE n_number = ? 
+        AND observed_date = ?
+    """, (n_number, observed_date))
+    row = cursor.fetchone()
+    connection.close()
+    return row
