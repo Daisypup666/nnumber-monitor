@@ -1,7 +1,7 @@
 from database import (
     get_removed_reservations,
     initialize_database,
-    save_candidates,
+    #save_candidates,
     count_snapshots,
     # imports duplicate snapshot
     #count_duplicate_snapshots,
@@ -22,8 +22,18 @@ from faa_downloader import (
     load_reservations,
     check_faa_connection,
 )
+from pathlib import Path
 
+def import_archived_snapshot(zip_path):
+    reservations = load_reservations(zip_path)
+    snapshot_date = get_snapshot_date_from_path(zip_path)
 
+    #print("Importing archived snapshot:", snapshot_date)
+    #print("Reservation records:", len(reservations))
+
+    save_reservations(reservations, snapshot_date)
+
+    #print("Archived snapshot imported.")
 
 
 def main():
@@ -31,6 +41,15 @@ def main():
     print("Starting application...")
     faa_zip_path, data_changed = check_faa_connection()
     initialize_database()
+   # print("TEST: about to import Sept 25")
+    #temp to ts previous dates path not getting snap shotted
+    #archive_path = Path(
+    #"data/faa_archive/ReleasableAircraft_2026-09-25.zip"
+    #)
+    #print("Archive path:", archive_path.resolve())
+    #print("Archive exists:", archive_path.exists())
+
+    #import_archived_snapshot(archive_path)
 
     #show_data_directory()
 
@@ -40,6 +59,15 @@ def main():
     #preview_reserved_data()
     #print("\nParsed reservations: ")
     #parse_reserved_data()
+    #archive_dir = Path("data/faa_archive")
+
+    #for archive_path in archive_dir.glob("*2026-09-25.zip"):
+    #    print("Found archive:", archive_path)
+    #    import_archived_snapshot(archive_path)
+
+
+
+
     #29 -36 commented out as debug/exploation output
 
    # print("\nReservations purging within 30 days:") 
@@ -50,6 +78,9 @@ def main():
    #old method:
    # snapshot_date = date.today().isoformat()
     snapshot_date = get_snapshot_date_from_path(faa_zip_path)
+
+    #print("Snapshot date being saved:", snapshot_date)
+
   
     if data_changed:
         save_reservations(reservations, snapshot_date)
@@ -63,13 +94,15 @@ def main():
         "FAA reservation snapshots stored:",
         count_reservation_snapshots() 
     )
+
+    # checks canidates in the zip file downloaded
     #save_candidates(candidates)
     #no candidates yet
     candidates = find_upcoming_purges(reservations, 30)
 
-    save_candidates(candidates)
+   # save_candidates(candidates)
 
-    print("\nReservations purging within 30 days:")
+   # print("\nReservations purging within 30 days:")
 
 #    for candidate in candidates:
 #        print("N-Number:", candidate["n_number"])
@@ -80,8 +113,8 @@ def main():
 #        print("Days Until Purge:", candidate["days_until_purge"])
 #        print("----------------")
 
-    print("Total candidates:", len(candidates))
-    print("candidate snapshots stored:", count_snapshots())
+   # print("Total candidates:", len(candidates))
+   # print("candidate snapshots stored:", count_snapshots())
     #checks the sql if duplicates exisit
    # print("Duplicate snapshot groups:", count_duplicate_snapshots)
 
@@ -96,8 +129,17 @@ def main():
         previous_date = snapshot_dates[1]
 
         removed_reservations = get_removed_reservations(
-
+            current_date,
+            previous_date
         )
+        print("comparing:", previous_date, "->", current_date)
+        print(
+            "N-numbers removed from the reservation list:",
+            len(removed_reservations)
+        )
+        for n_number in removed_reservations:
+            print(n_number)
+
 
 
 if __name__ == "__main__":

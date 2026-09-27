@@ -22,9 +22,9 @@ def initialize_database():
     connection = sqlite3.connect(DATABASE_PATH)
 
 #TEMPORTARY - remove the incorrectly created table
-    connection.execute("""
-        DROP TABLE IF EXISTS faa_reservation_snapshots
-    """)
+    #connection.execute("""
+    #    DROP TABLE IF EXISTS faa_reservation_snapshots
+    #""")
 #recreate it with the correct columns
     connection.execute("""
         CREATE TABLE IF NOT EXISTS reservation_snapshots (
@@ -204,7 +204,7 @@ def get_snapshot_dates():
 
     rows = cursor.fetchall()
 
-    connection.close
+    connection.close()
 
     return [row[0] for row in rows]
 
@@ -212,7 +212,7 @@ def get_removed_reservations(current_date, previous_date):
     connection = sqlite3.connect(DATABASE_PATH)
     cursor = connection.execute("""
         SELECT n_number
-        FROM faa_reservation_snapshopts
+        FROM faa_reservation_snapshots
         WHERE observed_date = ?
     
         EXCEPT

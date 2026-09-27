@@ -17,7 +17,7 @@ def show_data_directory():
 
 def get_snapshot_date_from_path(zip_path):
     filename = zip_path.stem
-    date_text = filename.replace("ReleasableAircraft_", "")
+    date_text = filename.split("_")[-1]
     return date_text
 
 def check_faa_connection():
@@ -34,7 +34,7 @@ def check_faa_connection():
     response.raise_for_status()
 
     print(f"FAA response status: {response.status_code}")
-    print(f"Downloaded bytes: {len(response.content)}")
+    #print(f"Downloaded bytes: {len(response.content)}")
 
     FAA_ARCHIVE_DIR.mkdir(
         parents=True,
@@ -56,18 +56,15 @@ def check_faa_connection():
     with open(zip_path, "wb") as file:
         file.write(response.content)
 
-    print(f"FAA ZIP saved to: {zip_path}")
+    #print(f"FAA ZIP saved to: {zip_path}")
 
     #prints hash info
     file_hash = calculate_file_hash(zip_path)
-
-    print(f"FAA ZIP hash: {file_hash}")
-
+    #print(f"FAA ZIP hash: {file_hash}")
     previous_zip = get_previous_archive(zip_path)
     if previous_zip is None:
         print("No previous FAA archive available for comparison.")
         data_changed = True
-    
     else:
         previous_hash = calculate_file_hash(previous_zip)
 
@@ -77,10 +74,8 @@ def check_faa_connection():
         else:
             print("FAA ZIP has changed since the last archive.")
             data_changed = True
-
     #starilizes archives
     cleanup_faa_archive(7)
-
     return zip_path, data_changed
 
 #troubleshooting
@@ -260,10 +255,16 @@ def calculate_file_hash(file_path):
     return sha256.hexdigest()
 
 def get_previous_archive(current_zip_path):
+   # Debug information for FAA archive directory and current ZIP file
+   # print("FAA_ARCHIVE_DIR:", FAA_ARCHIVE_DIR)
+   # print("FAA_ARCHIVE_DIR absolute:", FAA_ARCHIVE_DIR.resolve())
+   # print("Everything in archive:", list(FAA_ARCHIVE_DIR.iterdir()))
     zip_files = sorted(
-        FAA_ARCHIVE_DIR.glob("ReleasableAircraft_*.zip"),
+        FAA_ARCHIVE_DIR.glob("*.zip"),
         reverse=True
     )
+    #print("Current ZIP:", current_zip_path)
+   # print("Archives found:", zip_files)
 
     for zip_file in zip_files:
         if zip_file != current_zip_path:
