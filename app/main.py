@@ -1,9 +1,8 @@
 from database import (
-    get_removed_reservations,
     initialize_database,
     #save_candidates,
-    count_snapshots,
-    # imports duplicate snapshot
+    #count_snapshots,
+    #imports duplicate snapshot
     #count_duplicate_snapshots,
     save_reservations,
     count_reservation_snapshots,
@@ -18,14 +17,14 @@ from faa_downloader import (
     #parse_reserved_data,
     #commented out as they are no longer
     #used only used for exploration of the zip file
-    find_upcoming_purges,
+    #find_upcoming_purges,
     get_snapshot_date_from_path,
     load_reservations,
     check_faa_connection,
-    preview_master_data,
+    #preview_master_data,
     load_registered_n_numbers,
 )
-from pathlib import Path
+#from pathlib import Path
 
 def import_archived_snapshot(zip_path):
     reservations = load_reservations(zip_path)

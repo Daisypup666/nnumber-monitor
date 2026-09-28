@@ -43,7 +43,7 @@ def check_faa_connection():
 
     today = date.today().isoformat()
 
-    zip_path = FAA_ARCHIVE_DIR / f"ReleaseableAircraft_{today}.zip"
+    zip_path = FAA_ARCHIVE_DIR / f"ReleasableAircraft_{today}.zip"
 
     with zipfile.ZipFile(io.BytesIO(response.content)) as faa_zip:
         file_names = faa_zip.namelist()
@@ -192,7 +192,7 @@ def find_upcoming_purges(reservations, days_ahead=30):
 
 def classify_reservation(reservation_type):
     if reservation_type in ("A", "FN"):
-        return "EXPIRING_RESERVATIION"
+        return "EXPIRING_RESERVATION"
 
     elif reservation_type == "FP":
         return "PAID_RESERVATION"
