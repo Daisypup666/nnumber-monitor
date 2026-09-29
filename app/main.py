@@ -9,6 +9,11 @@ from database import (
     get_snapshot_dates,
     get_removed_reservations,
     get_reservation_details,
+    save_flagged_n_number,
+    get_flagged_n_numbers,
+    update_flag_status,
+    get_flag_summary,
+    get_resolved_flags,
 )
 from faa_downloader import (
     #show_data_directory,
@@ -29,6 +34,7 @@ from faa_downloader import (
 def import_archived_snapshot(zip_path):
     reservations = load_reservations(zip_path)
     snapshot_date = get_snapshot_date_from_path(zip_path)
+
 
     #print("Importing archived snapshot:", snapshot_date)
     #print("Reservation records:", len(reservations))
@@ -77,16 +83,37 @@ def main():
 
     # commented out as debug/exploation output
    # print("\nReservations purging within 30 days:") 
-   #no filter in place atm
+   
     reservations = load_reservations(faa_zip_path)
-    print("Total FAA reservation records:", len(reservations))
+    #print("Total FAA reservation records:", len(reservations))
 
     registered_n_numbers = load_registered_n_numbers(faa_zip_path)
-    print(
-        "Registered aircraft N-numbers loaded:",
-        len(registered_n_numbers)
-    )
-    print("Total FAA reservation records:", len(reservations))
+    flagged_n_numbers = get_flagged_n_numbers()
+    #print("Active flagged N-numbers:", len(flagged_n_numbers))
+    reserved_n_numbers = {
+        reservation["n_number"]
+        for reservation in reservations
+    }
+    if data_changed:
+
+        for flag in flagged_n_numbers:
+            n_number = flag[0]
+
+            if n_number in registered_n_numbers:
+                update_flag_status(n_number, "REGISTERED", snapshot_date)
+                print(f"Watch list update: {n_number} is now registered.")
+
+            elif n_number in reserved_n_numbers:
+                update_flag_status(n_number, "RETURNED", snapshot_date)
+                print(f"Watch list update: {n_number} RETURNED TO reserved")
+
+            else:
+                print(f"Watch list update: {n_number} remains FLAGGED")
+
+            "Registered aircraft N-numbers loaded:",
+            len(registered_n_numbers)
+        
+        print("Total FAA reservation records:", len(reservations))
 
    #old method:
    # snapshot_date = date.today().isoformat()
@@ -148,15 +175,71 @@ def main():
                 else:
                     print("Status: FLAG FOR REVIEW")
                     flagged_count += 1
-        print("\n--- Comparison Sumarry --")
-        print("Removed reservations:", len(removed_reservations))
-        print("Registered aircraft:", registered_count)
-        print("Flagged for review:", flagged_count)
 
+                    save_flagged_n_number(
+                        n_number=details[0],
+                        registrant=details[1],
+                        reservation_type=details[2],
+                        category=details[3],
+                        purge_date=details[4],
+                        last_observed=details[5],
+                        detected_date=current_date
+                    )
+
+                    
+        print("\n--- Comparison Sumarry --")
+        print("Status: Removed reservations:", len(removed_reservations))
+        print("Status: Registered aircraft:", registered_count)
+        print("Status: Flagged for review:", flagged_count)
+
+    flag_summary = get_flag_summary()
+    print("\n---Watch List Summary ---")
+    print("Active flags:", flag_summary.get("FLAGGED", 0))
+    print(
+        "Resolved as registered:",
+        flag_summary.get("REGISTERED", 0)
+    )
+    print(
+        "Returned to reservations:",
+        flag_summary.get("RETURNED", 0)
+    )
+
+    flagged_n_numbers = get_flagged_n_numbers()
+    print("\n--- Active Watch List ---")
+
+    if not flagged_n_numbers:
+        print("No active flags.")
+    else:
+        for flag in flagged_n_numbers:
+            print(f"\nN-number: {flag[0]}")
+            print(f"Registrant: {flag[1]}")
+            print(f"Reservation Type: {flag[2]}")
+            print(f"Category: {flag[3]}")
+            print(f"Purge Date: {flag[4]}")
+            print(f"Last Observed: {flag[5]}")
+            print(f"Detected: {flag[6]}")
+            print(f"Status: {flag[7]}")
+
+    resolved_flags = get_resolved_flags()
+
+    print("\n--- Resolved History ---")
+
+    if not resolved_flags:
+        print("No resolved flags yet.")
+    else:
+        for flag in resolved_flags:
+            print(f"\nN-number: {flag[0]}")
+            print(f"Registrant: {flag[1]}")
+            print(f"Category: {flag[3]}")
+            print(f"Detected: {flag[6]}")
+            print(f"Resolution: {flag[7]}")
+            print(f"Resolved: {flag[8]}")  
+            
+             
     # checks canidates in the zip file downloaded
         #save_candidates(candidates)
         #no candidates yet
-        candidates = find_upcoming_purges(reservations, 30)
+        #candidates = find_upcoming_purges(reservations, 30)
 
     # save_candidates(candidates)
 
@@ -185,6 +268,8 @@ def main():
                 #   )
                 #print("\nTest removed reservations:")
                 #print(details)
+
+
 
 if __name__ == "__main__":
     main()

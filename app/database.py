@@ -44,6 +44,23 @@ def initialize_database():
         CREATE UNIQUE INDEX IF NOT EXISTS idx_n_number_observed_date
         ON reservation_snapshots (n_number, Observed_date)   
 """)
+
+    # NEW flagged N-number table
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS flagged_n_numbers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            n_number TEXT NOT NULL,
+            registrant TEXT,
+            reservation_type TEXT,
+            category TEXT,
+            purge_date TEXT,
+            last_observed TEXT NOT NULL,
+            detected_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'FLAGGED',
+            resolved_date TEXT,
+            UNIQUE(n_number, detected_date)
+        )
+    """) 
 #-----------------------------------------------------
 #FULL FAA RESERVATION SNAPSHOT
 #-----------------------------------------------------
@@ -143,7 +160,7 @@ def count_reservation_snapshots():
 
     count = cursor.fetchone()[0]
 
-    connection.close
+    connection.close()
 
     return count
 #-----------------------------------------------
@@ -243,3 +260,117 @@ def get_reservation_details(n_number, observed_date):
     row = cursor.fetchone()
     connection.close()
     return row
+
+def save_flagged_n_number(
+    n_number,
+    registrant,
+    reservation_type,
+    category,
+    purge_date,
+    last_observed,
+    detected_date
+):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    connection.execute("""
+        INSERT OR IGNORE INTO flagged_n_numbers (
+            n_number,
+            registrant,
+            reservation_type,
+            category,
+            purge_date,
+            last_observed,
+            detected_date,
+            status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'FLAGGED')
+    """, (
+        n_number,
+        registrant,
+        reservation_type,
+        category,
+        purge_date,
+        last_observed,
+        detected_date
+    ))
+
+    connection.commit()
+    connection.close()
+
+def get_flagged_n_numbers():
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    cursor = connection.execute("""
+        SELECT
+            n_number,
+            registrant,
+            reservation_type,
+            category,
+            purge_date,
+            last_observed,
+            detected_date,
+            status
+        FROM flagged_n_numbers
+        WHERE status = 'FLAGGED'
+        ORDER BY detected_date ASC
+    """)
+
+    rows = cursor.fetchall()
+
+    connection.close()
+
+    return rows
+
+def update_flag_status(n_number, status, resolved_date):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    connection.execute("""
+        UPDATE flagged_n_numbers
+        SET status = ?,
+            resolved_date = ?
+        WHERE n_number = ?
+        AND status = 'FLAGGED'
+    """, (status, resolved_date, n_number))
+
+    connection.commit()
+    connection.close()
+
+def get_flag_summary():
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    cursor = connection.execute("""
+        SELECT status, COUNT(*)
+        FROM flagged_n_numbers
+        GROUP BY status
+    """)
+
+    rows = cursor.fetchall()
+    connection.close()
+
+    return dict(rows)
+
+def get_resolved_flags():
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    cursor = connection.execute("""
+        SELECT
+            n_number,
+            registrant,
+            reservation_type,
+            category,
+            purge_date,
+            last_observed,
+            detected_date,
+            status,
+            resolved_date
+        FROM flagged_n_numbers
+        WHERE status != 'FLAGGED'
+        ORDER BY resolved_date DESC
+    """)
+
+    rows = cursor.fetchall()
+
+    connection.close()
+
+    return rows
+    
