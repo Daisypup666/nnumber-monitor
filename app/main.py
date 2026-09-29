@@ -1,3 +1,7 @@
+from notifications import (
+    build_change_notification,
+    send_discord_notification,
+)
 from reporting import (
     export_watch_list_csv,
     export_release_changes_csv,
@@ -283,7 +287,18 @@ def main():
 
     print(f"Changes CSV saved: {changes_report_path}")
 
+    notification_message = build_change_notification(
+        new_flags,
+        resolved_this_release,
+        report_date
+    )
 
+    if data_changed and notification_message:
+        print("\n--- Notification ---")
+        print(notification_message)
+
+        if send_discord_notification(notification_message):
+            print("Discord notification sent.")
 
 
     # checks canidates in the zip file downloaded
