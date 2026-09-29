@@ -1,3 +1,7 @@
+from reporting import (
+    export_watch_list_csv,
+    export_release_changes_csv,
+)
 from database import (
     initialize_database,
     #save_candidates,
@@ -14,6 +18,8 @@ from database import (
     update_flag_status,
     get_flag_summary,
     get_resolved_flags,
+    get_flags_detected_on_date,
+    get_flags_resolved_on_date,
 )
 from faa_downloader import (
     #show_data_directory,
@@ -138,6 +144,7 @@ def main():
 
     snapshot_dates = get_snapshot_dates()
     print("Snapshot dates:", snapshot_dates)
+    report_date = snapshot_date
 
     if len(snapshot_dates) < 2:
         print("waiting for another FAA snapshot before comparing changes.")
@@ -145,6 +152,8 @@ def main():
     else:
         current_date = snapshot_dates[0]
         previous_date = snapshot_dates[1]
+
+        report_date = current_date
 
         removed_reservations = get_removed_reservations(
             current_date,
@@ -234,8 +243,49 @@ def main():
             print(f"Detected: {flag[6]}")
             print(f"Resolution: {flag[7]}")
             print(f"Resolved: {flag[8]}")  
-            
-             
+
+    new_flags = get_flags_detected_on_date(report_date)
+    resolved_this_release = get_flags_resolved_on_date(report_date)
+
+    print("\n--- Changes This Release ---")
+
+    if not new_flags and not resolved_this_release:
+        print("No watch list changes this release.")
+
+    else:
+        for flag in new_flags:
+            print(f"\nNEW FLAG: {flag[0]}")
+            print(f"Registrant: {flag[1]}")
+            print(f"Category: {flag[3]}")
+
+        for flag in resolved_this_release:
+            print(f"\nRESOLVED -> {flag[7]}: {flag[0]}")
+            print(f"Registrant: {flag[1]}")
+            print(f"Resolved: {flag[8]}")
+
+
+    #reload current database state for the CSV report
+    flagged_n_numbers = get_flagged_n_numbers()
+    resolved_flags = get_resolved_flags()
+
+    report_path = export_watch_list_csv(
+        flagged_n_numbers,
+        resolved_flags,
+        report_date
+    )
+
+    print(f"\nCSV report saved: {report_path}")        
+    changes_report_path = export_release_changes_csv(
+        new_flags,
+        resolved_this_release,
+        report_date
+    )
+
+    print(f"Changes CSV saved: {changes_report_path}")
+
+
+
+
     # checks canidates in the zip file downloaded
         #save_candidates(candidates)
         #no candidates yet

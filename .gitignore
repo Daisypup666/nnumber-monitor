@@ -20,3 +20,5 @@ data/*.db-wal
 
 # Environment/secrets
 .env
+
+reports/

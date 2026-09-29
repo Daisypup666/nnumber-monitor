@@ -373,4 +373,52 @@ def get_resolved_flags():
     connection.close()
 
     return rows
-    
+
+def get_flags_detected_on_date(detected_date):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    cursor = connection.execute("""
+        SELECT
+            n_number,
+            registrant,
+            reservation_type,
+            category,
+            purge_date,
+            last_observed,
+            detected_date,
+            status,
+            resolved_date
+        FROM flagged_n_numbers
+        WHERE detected_date = ?
+        ORDER BY n_number
+    """, (detected_date,))
+
+    rows = cursor.fetchall()
+    connection.close()
+
+    return rows
+
+def get_flags_resolved_on_date(resolved_date):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    cursor = connection.execute("""
+        SELECT
+            n_number,
+            registrant,
+            reservation_type,
+            category,
+            purge_date,
+            last_observed,
+            detected_date,
+            status,
+            resolved_date
+        FROM flagged_n_numbers
+        WHERE resolved_date = ?
+        ORDER BY n_number
+    """, (resolved_date,))
+
+    rows = cursor.fetchall()
+    connection.close()
+
+    return rows
+
