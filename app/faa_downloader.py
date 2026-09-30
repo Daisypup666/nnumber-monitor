@@ -59,22 +59,60 @@ def check_faa_connection():
     #print(f"FAA ZIP saved to: {zip_path}")
 
     #prints hash info
-    file_hash = calculate_file_hash(zip_path)
-    #print(f"FAA ZIP hash: {file_hash}")
     previous_zip = get_previous_archive(zip_path)
+
     if previous_zip is None:
         print("No previous FAA archive available for comparison.")
         data_changed = True
-    else:
-        previous_hash = calculate_file_hash(previous_zip)
 
-        if file_hash == previous_hash:
-            print("FAA ZIP has not changed since the last archive.")
-            data_changed = False
-        else:
-            print("FAA ZIP has changed since the last archive.")
-            data_changed = True
-    #starilizes archives
+    else:
+        current_reserved_hash = calculate_zip_member_hash(
+            zip_path,
+            "RESERVED.txt"
+        )
+
+        previous_reserved_hash = calculate_zip_member_hash(
+            previous_zip,
+            "RESERVED.txt"
+        )
+
+        current_master_hash = calculate_zip_member_hash(
+            zip_path,
+            "MASTER.txt"
+        )
+
+        previous_master_hash = calculate_zip_member_hash(
+            previous_zip,
+            "MASTER.txt"
+        )
+
+        reserved_changed = (
+            current_reserved_hash != previous_reserved_hash
+        )
+
+        master_changed = (
+            current_master_hash != previous_master_hash
+        )
+
+    #print("DEBUG current ZIP:", zip_path)
+    #print("DEBUG previous ZIP:", previous_zip)
+
+    #print("DEBUG RESERVED changed:", reserved_changed)
+    #print("DEBUG MASTER changed:", master_changed)
+
+    #print("DEBUG current RESERVED:", current_reserved_hash)
+    #print("DEBUG previous RESERVED:", previous_reserved_hash)
+
+    #print("DEBUG current MASTER:", current_master_hash)
+    #print("DEBUG previous MASTER:", previous_master_hash)
+
+    data_changed = reserved_changed or master_changed
+    if data_changed:
+        print("FAA data has changed since the last archive.")
+    else:
+        print("FAA data has not changed since the last archive.")
+
+        #starilizes archives
     cleanup_faa_archive(7)
     return zip_path, data_changed
 
@@ -280,19 +318,34 @@ def calculate_file_hash(file_path):
     return sha256.hexdigest()
 
 def get_previous_archive(current_zip_path):
-   # Debug information for FAA archive directory and current ZIP file
-   # print("FAA_ARCHIVE_DIR:", FAA_ARCHIVE_DIR)
-   # print("FAA_ARCHIVE_DIR absolute:", FAA_ARCHIVE_DIR.resolve())
-   # print("Everything in archive:", list(FAA_ARCHIVE_DIR.iterdir()))
+    current_zip_path = Path(current_zip_path)
+
+    current_date = get_snapshot_date_from_path(current_zip_path)
+
     zip_files = sorted(
         FAA_ARCHIVE_DIR.glob("*.zip"),
         reverse=True
     )
-    #print("Current ZIP:", current_zip_path)
-   # print("Archives found:", zip_files)
 
     for zip_file in zip_files:
-        if zip_file != current_zip_path:
+        archive_date = get_snapshot_date_from_path(zip_file)
+
+        if archive_date < current_date:
             return zip_file
 
     return None
+
+def calculate_zip_member_hash(zip_path, member_name):
+    sha256 = hashlib.sha256()
+
+    with zipfile.ZipFile(zip_path, "r") as zip_file:
+        with zip_file.open(member_name) as file:
+            while True:
+                chunk = file.read(8192)
+
+                if not chunk:
+                    break
+
+                sha256.update(chunk)
+
+    return sha256.hexdigest()

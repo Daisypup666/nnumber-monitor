@@ -1,3 +1,6 @@
+from logger import setup_logger
+logger = setup_logger()
+
 from notifications import (
     build_change_notification,
     send_discord_notification,
@@ -55,10 +58,61 @@ def import_archived_snapshot(zip_path):
 
 
 def main():
+    logger.info("N-number Monitor started")
+
+
     print("N-number Monitor")
     print("Starting application...")
-    faa_zip_path, data_changed = check_faa_connection()
     initialize_database()
+
+    faa_zip_path, data_changed = check_faa_connection()
+
+    snapshot_date = get_snapshot_date_from_path(faa_zip_path)
+
+    existing_snapshot_dates = get_snapshot_dates()
+    #print("DEBUG snapshot_date:", repr(snapshot_date))
+    #print("DEBUG snapshot_date type:", type(snapshot_date))
+    #print("DEBUG existing_snapshot_dates:", repr(existing_snapshot_dates))
+
+    #if existing_snapshot_dates:
+    #    print(
+    #        "DEBUG stored date type:",
+    #        type(existing_snapshot_dates[0])
+    #    )
+
+    #print(
+    #    "DEBUG already processed comparison:",
+    #    snapshot_date in existing_snapshot_dates
+    #)
+   # print("DEBUG snapshot_date type:", type(snapshot_date))
+    #print("DEBUG existing_snapshot_dates:", repr(existing_snapshot_dates))
+
+   # if existing_snapshot_dates:
+   #     print(
+   #         "DEBUG stored date type:",
+   #         type(existing_snapshot_dates[0])
+   #     )
+
+   # print(
+    #    "DEBUG already processed comparison:",
+    #    snapshot_date in existing_snapshot_dates
+    #)
+    already_processed = snapshot_date in existing_snapshot_dates
+
+    if already_processed:
+        data_changed = False
+        logger.info(
+            "FAA snapshot %s already processed",
+            snapshot_date
+        )
+    else:
+        logger.info(
+            "New FAA snapshot detected: %s",
+            snapshot_date
+        )
+
+
+
     #testing preview master data 
     #print("\nFirst 5 rows of MASTER.text:")
     #preview_master_data(faa_zip_path)
@@ -127,8 +181,7 @@ def main():
 
    #old method:
    # snapshot_date = date.today().isoformat()
-    snapshot_date = get_snapshot_date_from_path(faa_zip_path)
-
+    logger.info("FAA snapshot date: %s", snapshot_date)
     #print("Snapshot date being saved:", snapshot_date)
 
   
@@ -136,7 +189,9 @@ def main():
         save_reservations(reservations, snapshot_date)
         print("New FAA snapshot saved. ")
     else:
-        print("Data has not changed since the last snapshot.")
+        print(
+            f"FAA snapshot {snapshot_date} has already been processed."
+        )
    
   
     print(
@@ -150,8 +205,16 @@ def main():
     print("Snapshot dates:", snapshot_dates)
     report_date = snapshot_date
 
-    if len(snapshot_dates) < 2:
-        print("waiting for another FAA snapshot before comparing changes.")
+    if already_processed:
+        print(
+            f"Skipping comparison for already processed snapshot "
+            f"{snapshot_date}."
+        )
+
+    elif len(snapshot_dates) < 2:
+        print(
+            "Waiting for another FAA snapshot before comparing changes."
+        )
 
     else:
         current_date = snapshot_dates[0]
@@ -206,6 +269,12 @@ def main():
         print("Status: Flagged for review:", flagged_count)
 
     flag_summary = get_flag_summary()
+    logger.info(
+        "Watch list summary - Active: %s | Registered: %s | Returned: %s",
+        flag_summary.get("FLAGGED", 0),
+        flag_summary.get("REGISTERED", 0),
+        flag_summary.get("RETURNED", 0)
+    )
     print("\n---Watch List Summary ---")
     print("Active flags:", flag_summary.get("FLAGGED", 0))
     print(
@@ -250,7 +319,11 @@ def main():
 
     new_flags = get_flags_detected_on_date(report_date)
     resolved_this_release = get_flags_resolved_on_date(report_date)
-
+    logger.info(
+        "Release changes - New flags: %s | Resolved: %s",
+        len(new_flags),
+        len(resolved_this_release)
+    )
     print("\n--- Changes This Release ---")
 
     if not new_flags and not resolved_this_release:
@@ -292,6 +365,8 @@ def main():
         resolved_this_release,
         report_date
     )
+    logger.info("Watch list report saved: %s", report_path)
+    logger.info("Release changes report saved: %s", changes_report_path)
 
     if data_changed and notification_message:
         print("\n--- Notification ---")
@@ -334,7 +409,11 @@ def main():
                 #print("\nTest removed reservations:")
                 #print(details)
 
-
+    logger.info("N-number Monitor completed successfully")
 
 if __name__ == "__main__":
-    main()
+   try:
+       main()
+   except Exception as e:
+       logger.error(f"N-number Monitor failed: {e}")
+       raise

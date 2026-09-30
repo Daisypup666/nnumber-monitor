@@ -216,3 +216,18 @@ def test_no_removed_reservations_when_snapshots_match(tmp_path):
 
     assert removed == []
 
+def test_existing_snapshot_date_is_detected():
+    database.save_reservations(
+        [
+            {
+                "n_number": "123TEST",
+                "registrant": "TEST OWNER",
+                "reservation_type": "CN",
+                "category": "TEST_CATEGORY",
+                "purge_date": None,
+            }
+        ],
+        "2026-09-30"
+    )
+
+    snapshot_dates = database.get_snapshot_dates()
