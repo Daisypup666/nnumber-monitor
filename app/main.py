@@ -4,6 +4,7 @@ logger = setup_logger()
 from notifications import (
     build_change_notification,
     send_discord_notification,
+    build_failure_notification,
 )
 from reporting import (
     export_watch_list_csv,
@@ -412,8 +413,20 @@ def main():
     logger.info("N-number Monitor completed successfully")
 
 if __name__ == "__main__":
-   try:
-       main()
-   except Exception as e:
-       logger.error(f"N-number Monitor failed: {e}")
-       raise
+    try:
+        main()
+
+    except Exception as e:
+        logger.exception("N-number Monitor crashed")
+
+        failure_message = build_failure_notification(e)
+
+        try:
+            send_discord_notification(failure_message)
+        except Exception:
+            logger.exception(
+                "Failed to send Discord failure notification"
+            )
+
+        raise
+

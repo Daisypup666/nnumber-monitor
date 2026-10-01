@@ -5,6 +5,8 @@ import io
 from datetime import datetime, date
 import requests
 import hashlib
+import time
+
 
 DATA_DIR = Path("data")
 FAA_URL = "https://registry.faa.gov/database/ReleasableAircraft.zip"
@@ -21,19 +23,38 @@ def get_snapshot_date_from_path(zip_path):
     return date_text
 
 def check_faa_connection():
-    
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
-    
-    response = requests.get(
-        FAA_URL,
-        headers=headers,
-        timeout=30
-    )
-    response.raise_for_status()
 
-    print(f"FAA response status: {response.status_code}")
+    max_attempts = 3
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.get(
+                FAA_URL,
+                headers=headers,
+                timeout=30
+            )
+
+            response.raise_for_status()
+
+            print(
+                f"FAA response status: {response.status_code}"
+            )
+
+            break
+
+        except requests.RequestException as error:
+            print(
+                f"FAA download attempt "
+                f"{attempt}/{max_attempts} failed: {error}"
+            )
+
+            if attempt == max_attempts:
+                raise
+
+            time.sleep(5)
     #print(f"Downloaded bytes: {len(response.content)}")
 
     FAA_ARCHIVE_DIR.mkdir(
@@ -48,9 +69,16 @@ def check_faa_connection():
     with zipfile.ZipFile(io.BytesIO(response.content)) as faa_zip:
         file_names = faa_zip.namelist()
 
-        if "RESERVED.txt" not in file_names:
+        required_files = {
+           "RESERVED.txt",
+           "MASTER.txt",
+       }
+
+        missing_files = required_files - set(file_names)
+        if missing_files:
             raise ValueError(
-                "Downloaded FAA ZIP does not contain RESERVED.txt"
+                "Downloaded FAA ZIP is missing required files: "
+                + ", ".join(sorted(missing_files))
             )
     #outside validation block
     with open(zip_path, "wb") as file:
@@ -62,7 +90,9 @@ def check_faa_connection():
     previous_zip = get_previous_archive(zip_path)
 
     if previous_zip is None:
-        print("No previous FAA archive available for comparison.")
+        print(
+            "No previous FAA archive available for comparison."
+        )
         data_changed = True
 
     else:
@@ -94,25 +124,17 @@ def check_faa_connection():
             current_master_hash != previous_master_hash
         )
 
-    #print("DEBUG current ZIP:", zip_path)
-    #print("DEBUG previous ZIP:", previous_zip)
+        data_changed = reserved_changed or master_changed
 
-    #print("DEBUG RESERVED changed:", reserved_changed)
-    #print("DEBUG MASTER changed:", master_changed)
-
-    #print("DEBUG current RESERVED:", current_reserved_hash)
-    #print("DEBUG previous RESERVED:", previous_reserved_hash)
-
-    #print("DEBUG current MASTER:", current_master_hash)
-    #print("DEBUG previous MASTER:", previous_master_hash)
-
-    data_changed = reserved_changed or master_changed
-    if data_changed:
-        print("FAA data has changed since the last archive.")
-    else:
-        print("FAA data has not changed since the last archive.")
-
-        #starilizes archives
+        if data_changed:
+            print(
+                "FAA data has changed since the last archive."
+            )
+        else:
+            print(
+                "FAA data has not changed since the last archive."
+            )
+            #starilizes archives
     cleanup_faa_archive(7)
     return zip_path, data_changed
 

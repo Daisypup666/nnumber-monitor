@@ -50,3 +50,10 @@ def send_discord_notification(message):
     response.raise_for_status()
 
     return True
+
+def build_failure_notification(error):
+    return(
+        "⚠️ FAA N-Number Monitor Failed\n\n"
+        f"Error: {error}\n\n"
+        "Check logs/nnumber_monitor.log for more details."
+    )
