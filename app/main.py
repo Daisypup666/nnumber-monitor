@@ -59,6 +59,19 @@ def import_archived_snapshot(zip_path):
 
     #print("Archived snapshot imported.")
 
+def test_notification():
+    message = (
+        "🧪 FAA N-Number Monitor Test\n\n"
+        "Discord notifications are working correctly."
+    )
+
+    if send_discord_notification(message):
+        print("Test Discord notification sent successfully.")
+        return True
+
+    print("Test Discord notification failed.")
+    return False
+
 def show_status():
     initialize_database()
 
@@ -482,7 +495,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Run the monitor without sending Discord notifications"
         )
-
+    parser.add_argument(
+        "--test-notification",
+        action="store_true",
+        help="Send a test Discord notification and exit"
+    )
 
 
     args = parser.parse_args()
@@ -490,6 +507,10 @@ if __name__ == "__main__":
     try:
         if args.status:
             show_status()
+
+        elif args.test_notification:
+            test_notification()
+
         else:
             main(
                 notifications_enabled=not args.no_notify

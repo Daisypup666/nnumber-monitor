@@ -615,19 +615,47 @@ RETURNED
 
 ## Command-Line Usage
 
-Run the FAA N-Number Monitor normally:
+The FAA N-Number Monitor includes several command-line options for manual operation and troubleshooting.
+
+### Run the Monitor
+
+Run the complete FAA monitoring process:
 
 ```bash
 python -m app.main
+```
+
+This downloads the latest FAA data, processes reservation changes, updates the watch list, generates reports, and sends notifications when applicable.
+
+### View Monitor Status
 
 Display the current monitor status without downloading new FAA data:
+
+```bash
 python -m app.main --status
+```
 
-Run the full monitor while suppressing routine Discord notifications:
+This displays stored snapshot information and the current watch-list status without modifying the database.
+
+### Run Without Routine Notifications
+
+Run the complete monitor while suppressing routine Discord notifications:
+
+```bash
 python -m app.main --no-notify
+```
 
-The --no-notify option suppresses routine watch-list notifications. Operational failure alerts remain enabled so unexpected monitor failures can still be reported.
----
+Operational failure alerts remain enabled so unexpected monitor failures can still be reported.
+
+### Test Discord Notifications
+
+Verify the Discord webhook configuration without running the FAA monitor:
+
+```bash
+python -m app.main --test-notification
+```
+
+This sends a clearly labeled test message to the configured Discord webhook and exits without processing FAA data.
 
 ## Automated Testing
 

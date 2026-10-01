@@ -92,3 +92,26 @@ def test_notifications_enabled_sends_discord(
     assert result is True
     assert len(sent_messages) == 1
     assert sent_messages[0] == "Test notification"
+
+
+def test_test_notification_sends_discord(
+    monkeypatch
+):
+    sent_messages = []
+
+    def fake_send(message):
+        sent_messages.append(message)
+        return True
+
+    monkeypatch.setattr(
+        main,
+        "send_discord_notification",
+        fake_send
+    )
+
+    result = main.test_notification()
+
+    assert result is True
+    assert len(sent_messages) == 1
+    assert "FAA N-Number Monitor Test" in sent_messages[0]
+    assert "Discord notifications are working correctly" in sent_messages[0]
