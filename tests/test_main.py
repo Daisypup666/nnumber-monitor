@@ -243,3 +243,62 @@ def test_show_history_respects_limit(
 
     assert requested_limits == [5]
 
+def test_prepare_database_backup(monkeypatch):
+    backup_calls = []
+    cleanup_calls = []
+
+    def fake_backup_database():
+        backup_calls.append(True)
+        return "data/backups/test_backup.db"
+
+    def fake_cleanup_database_backups(keep):
+        cleanup_calls.append(keep)
+        return 0
+
+    monkeypatch.setattr(
+        main,
+        "backup_database",
+        fake_backup_database
+    )
+
+    monkeypatch.setattr(
+        main,
+        "cleanup_database_backups",
+        fake_cleanup_database_backups
+    )
+
+    result = main.prepare_database_backup()
+
+    assert result == "data/backups/test_backup.db"
+    assert len(backup_calls) == 1
+    assert cleanup_calls == [14]
+
+def test_prepare_database_backup_no_database(
+    monkeypatch
+):
+    cleanup_called = []
+
+    def fake_backup_database():
+        return None
+
+    def fake_cleanup_database_backups(keep):
+        cleanup_called.append(keep)
+        return 0
+
+    monkeypatch.setattr(
+        main,
+        "backup_database",
+        fake_backup_database
+    )
+
+    monkeypatch.setattr(
+        main,
+        "cleanup_database_backups",
+        fake_cleanup_database_backups
+    )
+
+    result = main.prepare_database_backup()
+
+    assert result is None
+    assert cleanup_called == []
+

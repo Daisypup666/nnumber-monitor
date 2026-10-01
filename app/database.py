@@ -1,6 +1,6 @@
 from pathlib import Path
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 
 #-----------------------------------------------
 # DATABASE LOCATION
@@ -8,6 +8,54 @@ from datetime import date
 
 DATA_DIR = Path("data")
 DATABASE_PATH = DATA_DIR / "nnumber_monitor.db"
+BACKUP_DIR = DATA_DIR / "backups"
+
+def backup_database():
+    if not DATABASE_PATH.exists():
+        return None
+
+    BACKUP_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    timestamp = datetime.now().strftime(
+        "%Y-%m-%d_%H-%M-%S"
+    )
+
+    backup_path = (
+        BACKUP_DIR /
+        f"nnumber_monitor_{timestamp}.db"
+    )
+
+    source = sqlite3.connect(DATABASE_PATH)
+    destination = sqlite3.connect(backup_path)
+
+    try:
+        source.backup(destination)
+    finally:
+        destination.close()
+        source.close()
+
+    return backup_path
+
+def cleanup_database_backups(keep=14):
+    if not BACKUP_DIR.exists():
+        return 0
+
+    backups = sorted(
+        BACKUP_DIR.glob("nnumber_monitor_*.db"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True
+    )
+
+    old_backups = backups[keep:]
+
+    for backup_path in old_backups:
+        backup_path.unlink()
+
+    return len(old_backups)
+
 
 #-----------------------------------------------
 #CREAE/ INITALIZE DATABASE

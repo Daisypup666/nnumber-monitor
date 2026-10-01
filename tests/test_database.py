@@ -1,5 +1,6 @@
 import app.database as database
 import sqlite3
+import os
 
 def test_flag_can_be_resolved_as_registered(tmp_path):
     # Use a temporary database instead of the real one
@@ -7,6 +8,7 @@ def test_flag_can_be_resolved_as_registered(tmp_path):
 
     database.DATA_DIR = tmp_path
     database.DATABASE_PATH = test_db
+    
 
     # Create the database tables
     database.initialize_database()
@@ -469,4 +471,110 @@ def test_get_monitor_run_history(tmp_path):
     assert history[1]["id"] == second_run
     assert history[1]["status"] == "SUCCESS"
 
-    
+def test_backup_database(tmp_path):
+    test_db = tmp_path / "test_nnumber_monitor.db"
+    backup_dir = tmp_path / "backups"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = test_db
+    database.BACKUP_DIR = backup_dir
+
+    database.initialize_database()
+
+    # Put some real data into the database
+    run_id = database.start_monitor_run(
+        "2026-10-01 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=run_id,
+        finished_at="2026-10-01 03:00:05",
+        status="SUCCESS",
+        snapshot_date="2026-10-01",
+        data_changed=True,
+        new_flags=2,
+        resolved_flags=1
+    )
+
+    # Create the backup
+    backup_path = database.backup_database()
+
+    assert backup_path is not None
+    assert backup_path.exists()
+    assert backup_path.parent == backup_dir
+
+    # Open the BACKUP, not the original
+    connection = sqlite3.connect(backup_path)
+
+    row = connection.execute(
+        """
+        SELECT
+            status,
+            snapshot_date,
+            data_changed,
+            new_flags,
+            resolved_flags
+        FROM monitor_runs
+        WHERE id = ?
+        """,
+        (run_id,)
+    ).fetchone()
+
+    connection.close()
+
+    assert row == (
+        "SUCCESS",
+        "2026-10-01",
+        1,
+        2,
+        1
+    )
+
+def test_cleanup_database_backups(tmp_path):
+    backup_dir = tmp_path / "backups"
+
+    database.BACKUP_DIR = backup_dir
+
+    backup_dir.mkdir()
+
+    # Create 20 fake backup files
+    for number in range(20):
+        backup_path = (
+            backup_dir /
+            f"nnumber_monitor_{number:02d}.db"
+        )
+
+        backup_path.write_text(
+            f"backup {number}"
+        )
+
+        # Give each file a different modification time
+        timestamp = 1000 + number
+
+        os.utime(
+            backup_path,
+            (timestamp, timestamp)
+        )
+
+    removed = database.cleanup_database_backups(
+        keep=14
+    )
+
+    remaining = list(
+        backup_dir.glob("nnumber_monitor_*.db")
+    )
+
+    assert removed == 6
+    assert len(remaining) == 14
+
+    remaining_names = {
+        path.name
+        for path in remaining
+    }
+
+    # Newest backup should remain
+    assert "nnumber_monitor_19.db" in remaining_names
+
+    # Oldest backup should have been removed
+    assert "nnumber_monitor_00.db" not in remaining_names
+

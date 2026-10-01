@@ -35,6 +35,8 @@ from app.database import (
     start_monitor_run,
     finish_monitor_run,
     get_monitor_run_history,
+    backup_database,
+    cleanup_database_backups,
 )
 from app.faa_downloader import (
     #show_data_directory,
@@ -260,7 +262,28 @@ def show_history(limit=10):
         if run["error_message"]:
             print(f"Error: {run['error_message']}")
 
+def prepare_database_backup():
+    backup_path = backup_database()
 
+    if not backup_path:
+        return None
+
+    logger.info(
+        "Database backup created: %s",
+        backup_path
+    )
+
+    removed_backups = cleanup_database_backups(
+        keep=14
+    )
+
+    if removed_backups:
+        logger.info(
+            "Removed %s old database backup(s)",
+            removed_backups
+        )
+
+    return backup_path
 
 def main(notifications_enabled=True):
     logger.info("N-number Monitor started")
@@ -268,6 +291,7 @@ def main(notifications_enabled=True):
     print("Starting application...")
     initialize_database()
 
+    prepare_database_backup()
     started_at = datetime.now().isoformat(
         sep=" ",
         timespec="seconds"
