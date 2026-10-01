@@ -6,7 +6,7 @@ A Python-based monitoring system that tracks changes in FAA aircraft N-number re
 
 The monitor downloads the FAA Releasable Aircraft database, stores reservation snapshots in SQLite, compares releases, identifies N-numbers that disappear from the reservation list, cross-references them against registered aircraft, maintains a watch list, generates reports, and sends Discord notifications for relevant changes.
 
-The project is designed to run automatically on a schedule while maintaining logs and persistent run history for troubleshooting and verification.
+The project is designed to run automatically on a schedule while maintaining logs, database backups, and persistent run history for troubleshooting and verification.
 
 ---
 
@@ -14,7 +14,7 @@ The project is designed to run automatically on a schedule while maintaining log
 
 - Downloads FAA Releasable Aircraft data
 - Validates downloaded FAA ZIP archives before processing
-- Verifies required `RESERVED.txt` and `MASTER.txt` files
+- Verifies required FAA data files before processing
 - Retries failed FAA downloads
 - Archives FAA datasets for comparison
 - Detects changes between FAA releases
@@ -30,7 +30,7 @@ The project is designed to run automatically on a schedule while maintaining log
 - Generates per-release change reports
 - Sends Discord notifications for watch-list changes
 - Automatically splits large Discord notifications into safe message sizes
-- Prevents Discord delivery failures from crashing the FAA processing job
+- Prevents Discord delivery failures from crashing FAA processing
 - Sends Discord failure alerts for monitor crashes
 - Maintains application logs
 - Stores persistent monitor execution history in SQLite
@@ -38,6 +38,10 @@ The project is designed to run automatically on a schedule while maintaining log
 - Records snapshot date and data-change information for each run
 - Records new and resolved flag counts for each run
 - Provides command-line status and history tools
+- Automatically backs up the SQLite database before monitor processing
+- Uses SQLite's backup API for safe database backups
+- Retains the 14 most recent database backups
+- Automatically removes older database backups
 - Supports unattended execution through Windows Task Scheduler
 - Includes an automated pytest test suite
 - Uses GitHub Actions for continuous integration
@@ -96,6 +100,44 @@ Each monitor execution is also recorded in SQLite so scheduled runs can be inspe
 
 ---
 
+## Monitor Startup Flow
+
+Before processing a new FAA release, the monitor protects the existing application state.
+
+```text
+Monitor Starts
+      |
+      v
+Initialize Database
+      |
+      v
+Create SQLite Backup
+      |
+      v
+Clean Old Backups
+      |
+      v
+Create RUNNING History Record
+      |
+      v
+Download FAA Data
+      |
+      v
+Process Snapshot
+      |
+      +------------------+
+      |                  |
+      v                  v
+   SUCCESS             FAILED
+      |                  |
+      v                  v
+Record Results       Record Error
+```
+
+This ensures a database recovery point exists before a normal monitor run begins modifying stored data.
+
+---
+
 ## Project Structure
 
 ```text
@@ -108,12 +150,11 @@ nnumber-monitor/
 ├── app/
 │   ├── main.py
 │   ├── database.py
-│   ├── faa_downloader.py
 │   ├── notifications.py
-│   ├── logger.py
 │   └── ...
 |
 ├── data/
+│   ├── backups/
 │   ├── faa_archive/
 │   └── nnumber_monitor.db
 |
@@ -131,7 +172,7 @@ nnumber-monitor/
 └── ...
 ```
 
-Some generated directories or files may not exist until the application has been run.
+Some generated directories and files may not exist until the application has been run.
 
 ---
 
@@ -162,10 +203,14 @@ Run commands from the root of the repository.
 python -m app.main
 ```
 
-This performs the normal monitoring workflow, including:
+A normal monitor run performs:
 
+- Database initialization
+- SQLite database backup
+- Backup retention cleanup
+- Monitor run-history creation
 - FAA data download
-- ZIP validation
+- FAA ZIP validation
 - Snapshot processing
 - Database updates
 - Reservation comparison
@@ -173,7 +218,7 @@ This performs the normal monitoring workflow, including:
 - CSV report generation
 - Logging
 - Discord notifications when applicable
-- Monitor run-history recording
+- Monitor run-history completion
 
 ---
 
@@ -326,13 +371,19 @@ FLAGGED
 
 Discord notifications are intended for meaningful watch-list activity rather than every routine monitor execution.
 
-Routine notifications may be generated when watch-list changes are detected, such as new flags or resolutions.
+Routine notifications may be generated when watch-list changes are detected, such as:
+
+- New N-numbers flagged for review
+- Previously flagged N-numbers becoming registered
+- Previously flagged N-numbers returning to the reservation list
 
 The monitor also supports operational failure notifications when the application encounters an unexpected error.
 
-Large notifications are automatically split into multiple Discord messages to remain within Discord message-size limits.
+Large notifications are automatically split into multiple Discord messages to remain within safe message-size limits.
 
 A Discord delivery failure is logged without causing an otherwise successful FAA processing run to be treated as failed.
+
+### Discord Configuration
 
 The Discord webhook should be stored in an environment variable:
 
@@ -340,7 +391,13 @@ The Discord webhook should be stored in an environment variable:
 DISCORD_WEBHOOK_URL
 ```
 
-Do not commit webhook URLs or tokens to the repository.
+Webhook URLs and tokens should never be committed to the repository.
+
+You can verify the configured webhook with:
+
+```bash
+python -m app.main --test-notification
+```
 
 ---
 
@@ -362,7 +419,7 @@ Generated reports are stored in the project's report directory.
 
 ## Database
 
-The project uses SQLite for persistent state.
+The project uses SQLite for persistent application state.
 
 The database stores information such as:
 
@@ -372,7 +429,9 @@ The database stores information such as:
 - Resolution status
 - Monitor execution history
 
-Monitor history records can include:
+### Monitor Run History
+
+Monitor execution records can include:
 
 ```text
 id
@@ -386,7 +445,76 @@ resolved_flags
 error_message
 ```
 
+A run begins with:
+
+```text
+RUNNING
+```
+
+and is later updated to:
+
+```text
+SUCCESS
+```
+
+or:
+
+```text
+FAILED
+```
+
+Failed runs can store the associated error message.
+
 This makes it possible to verify whether unattended monitor executions actually occurred and whether they completed successfully.
+
+---
+
+## Database Backups
+
+Before a normal monitor run begins processing FAA data, the application creates a backup of the current SQLite database.
+
+Backups are stored in:
+
+```text
+data/backups/
+```
+
+Backup filenames contain a timestamp:
+
+```text
+nnumber_monitor_2026-10-01_16-55-23.db
+```
+
+The application uses SQLite's built-in backup API rather than directly copying an active database file.
+
+### Backup Lifecycle
+
+```text
+Current SQLite Database
+          |
+          v
+SQLite Backup API
+          |
+          v
+Timestamped Backup
+          |
+          v
+data/backups/
+          |
+          v
+Retention Cleanup
+          |
+          v
+Keep 14 Newest Backups
+```
+
+The monitor automatically retains the **14 most recent backups**.
+
+Backups older than the retention limit are removed automatically to prevent unnecessary storage growth.
+
+If no database exists yet, the backup process safely returns without preventing the monitor from starting.
+
+The backup system provides a recovery point if a future FAA import, application error, or database issue damages the working database.
 
 ---
 
@@ -398,11 +526,13 @@ Application activity is written to:
 logs/nnumber_monitor.log
 ```
 
-Logging provides additional information for troubleshooting scheduled or unattended executions.
+Logging provides additional information for troubleshooting scheduled and unattended executions.
 
 Examples of logged events include:
 
 - Monitor startup
+- Database backup creation
+- Old backup cleanup
 - FAA snapshot detection
 - Watch-list summaries
 - Release changes
@@ -446,6 +576,8 @@ Run history can then be checked with:
 python -m app.main --history 5
 ```
 
+This provides a quick way to verify that scheduled executions occurred without manually inspecting Task Scheduler.
+
 ---
 
 ## Testing
@@ -456,35 +588,49 @@ Run the complete automated test suite with:
 python -m pytest -v
 ```
 
-The project currently includes **36 automated tests** covering functionality such as:
+The project currently includes **40 automated tests**.
 
-- Database operations
+Test coverage includes functionality such as:
+
+- Database initialization
 - Reservation snapshots
+- Duplicate snapshot protection
 - Flag creation
 - Flag resolution
 - FAA download handling
-- Retry behavior
+- Download retry behavior
 - FAA ZIP validation
 - Logging
 - Discord notifications
+- Discord notification controls
 - Large Discord message splitting
-- Discord failure isolation
+- Discord delivery failure isolation
 - CLI status output
-- Notification controls
+- Discord test notifications
 - Monitor run creation
-- Successful run completion
-- Failed run completion
+- Successful monitor run completion
+- Failed monitor run completion
+- Failure recording
 - Latest-run retrieval
 - Run-history retrieval
 - Run-history limits
+- SQLite database backup creation
+- Backup data integrity
+- Automatic backup retention
+- Backup startup integration
+- Missing-database backup handling
 
 ---
 
 ## Continuous Integration
 
-GitHub Actions automatically runs the pytest suite on repository pushes and pull requests.
+GitHub Actions automatically runs the pytest suite when changes are pushed to the repository.
 
-The workflow:
+Current workflow status:
+
+[![Python Tests](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml)
+
+The workflow performs the general process:
 
 ```text
 Push / Pull Request
@@ -493,7 +639,7 @@ Push / Pull Request
 GitHub Actions
         |
         v
-Create Ubuntu Environment
+Create Test Environment
         |
         v
 Install Python
@@ -508,7 +654,7 @@ Run pytest
 Pass / Fail
 ```
 
-The status badge at the top of this README reflects the current CI test status.
+This helps catch regressions before new changes are treated as stable.
 
 ---
 
@@ -522,13 +668,18 @@ Several safeguards are included to make unattended monitoring safer:
 - Dataset archiving
 - Duplicate snapshot protection
 - Persistent SQLite state
+- Automatic SQLite backups before processing
+- SQLite-safe backup creation
+- Automatic backup retention
+- Old-backup cleanup
 - Structured application logging
 - Discord failure notifications
 - Discord message-size handling
 - Isolation of notification delivery failures
 - Successful and failed run-history tracking
+- Persistent failure information
 - Automated pytest coverage
-- GitHub Actions CI
+- GitHub Actions continuous integration
 
 ---
 
@@ -536,12 +687,25 @@ Several safeguards are included to make unattended monitoring safer:
 
 This project is under active development.
 
-Current functionality focuses on reliable FAA dataset monitoring, persistent state, automated comparison, watch-list tracking, reporting, notifications, scheduled execution, and operational history.
+Current functionality focuses on:
+
+- Reliable FAA dataset monitoring
+- Persistent snapshot storage
+- Automated release comparison
+- N-number watch-list tracking
+- Resolution tracking
+- CSV reporting
+- Discord notifications
+- Scheduled execution
+- Monitor run history
+- Database recovery protection
+- Automated testing
+- Continuous integration
 
 Potential future improvements include:
 
+- Database restore tooling
 - Expanded run-history reporting
-- Database backup and maintenance tools
 - Additional CLI controls
 - Improved report summaries
 - Web-based monitoring dashboard
