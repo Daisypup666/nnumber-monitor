@@ -1,6 +1,6 @@
 # FAA N-Number Monitor
 
-[Keep your existing Python Tests / GitHub Actions badge here]
+[![Python Tests](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml)
 
 A Python-based monitoring system that tracks changes in FAA aircraft N-number reservation data.
 
