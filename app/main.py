@@ -113,17 +113,31 @@ def send_change_notification(
     data_changed,
     notifications_enabled=True
 ):
-    if (
+    if not (
         notifications_enabled
         and data_changed
         and notification_message
     ):
-        print("\n--- Notification ---")
-        print(notification_message)
+        return False
 
+    print("\n--- Notification ---")
+    print(notification_message)
+
+    try:
         if send_discord_notification(notification_message):
             print("Discord notification sent.")
             return True
+
+    except Exception as error:
+        logger.exception(
+            "Failed to send Discord change notification: %s",
+            error
+        )
+
+        print(
+            "Discord notification failed. "
+            "See log for details."
+        )
 
     return False
 

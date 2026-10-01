@@ -41,13 +41,30 @@ def send_discord_notification(message):
         print("Discord webhook not configured.")
         return False
 
-    response = requests.post(
-        webhook_url,
-        json={"content": message},
-        timeout=10
-    )
+    max_length = 1900
+    chunks = []
 
-    response.raise_for_status()
+    while message:
+        if len(message) <= max_length:
+            chunks.append(message)
+            break
+
+        split_at = message.rfind("\n", 0, max_length)
+
+        if split_at == -1:
+            split_at = max_length
+
+        chunks.append(message[:split_at])
+        message = message[split_at:].lstrip()
+
+    for chunk in chunks:
+        response = requests.post(
+            webhook_url,
+            json={"content": chunk},
+            timeout=10
+        )
+
+        response.raise_for_status()
 
     return True
 

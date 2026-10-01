@@ -115,3 +115,23 @@ def test_test_notification_sends_discord(
     assert len(sent_messages) == 1
     assert "FAA N-Number Monitor Test" in sent_messages[0]
     assert "Discord notifications are working correctly" in sent_messages[0]
+
+def test_discord_failure_does_not_crash_monitor(
+    monkeypatch
+):
+    def fake_send(message):
+        raise RuntimeError("Discord is unavailable")
+
+    monkeypatch.setattr(
+        main,
+        "send_discord_notification",
+        fake_send
+    )
+
+    result = main.send_change_notification(
+        notification_message="Test notification",
+        data_changed=True,
+        notifications_enabled=True
+    )
+
+    assert result is False

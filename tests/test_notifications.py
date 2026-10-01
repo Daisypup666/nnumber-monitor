@@ -156,3 +156,46 @@ def test_failure_notification_can_be_sent(monkeypatch):
     assert "FAA N-Number Monitor Failed" in sent_messages[0]
     assert "Test monitor failure" in sent_messages[0]
 
+def test_long_discord_notification_is_split(monkeypatch):
+    import app.notifications as notifications
+
+    monkeypatch.setenv(
+        "DISCORD_WEBHOOK_URL",
+        "https://example.com/fake-webhook"
+    )
+
+    sent_messages = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, json, timeout):
+        sent_messages.append(json["content"])
+        return FakeResponse()
+
+    monkeypatch.setattr(
+        notifications.requests,
+        "post",
+        fake_post
+    )
+
+    long_message = "A" * 5000
+
+    result = notifications.send_discord_notification(
+        long_message
+    )
+
+    assert result is True
+
+    # 5000 characters should require 3 messages
+    assert len(sent_messages) == 3
+
+    # Every Discord message must stay below our 1900-char limit
+    assert all(
+        len(message) <= 1900
+        for message in sent_messages
+    )
+
+    # Splitting must not lose any content
+    assert "".join(sent_messages) == long_message
