@@ -1,5 +1,5 @@
 import app.database as database
-
+import sqlite3
 
 def test_flag_can_be_resolved_as_registered(tmp_path):
     # Use a temporary database instead of the real one
@@ -231,3 +231,242 @@ def test_existing_snapshot_date_is_detected():
     )
 
     snapshot_dates = database.get_snapshot_dates()
+
+
+def test_start_monitor_run(tmp_path):
+    test_db = tmp_path / "test_monitor_runs.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = test_db
+
+    database.initialize_database()
+
+    run_id = database.start_monitor_run(
+        "2026-10-01 03:00:00"
+    )
+
+    assert run_id == 1
+
+    connection = sqlite3.connect(test_db)
+
+    row = connection.execute(
+        """
+        SELECT started_at, status
+        FROM monitor_runs
+        WHERE id = ?
+        """,
+        (run_id,)
+    ).fetchone()
+
+    connection.close()
+
+    assert row == (
+        "2026-10-01 03:00:00",
+        "RUNNING"
+    )
+
+
+def test_finish_monitor_run_success(tmp_path):
+    test_db = tmp_path / "test_monitor_runs.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = test_db
+
+    database.initialize_database()
+
+    run_id = database.start_monitor_run(
+        "2026-10-01 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=run_id,
+        finished_at="2026-10-01 03:00:08",
+        status="SUCCESS",
+        snapshot_date="2026-10-01",
+        data_changed=True,
+        new_flags=2,
+        resolved_flags=1
+    )
+
+    connection = sqlite3.connect(test_db)
+
+    row = connection.execute(
+        """
+        SELECT
+            started_at,
+            finished_at,
+            status,
+            snapshot_date,
+            data_changed,
+            new_flags,
+            resolved_flags,
+            error_message
+        FROM monitor_runs
+        WHERE id = ?
+        """,
+        (run_id,)
+    ).fetchone()
+
+    connection.close()
+
+    assert row == (
+        "2026-10-01 03:00:00",
+        "2026-10-01 03:00:08",
+        "SUCCESS",
+        "2026-10-01",
+        1,
+        2,
+        1,
+        None
+    )
+
+def test_finish_monitor_run_failure(tmp_path):
+    test_db = tmp_path / "test_monitor_runs.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = test_db
+
+    database.initialize_database()
+
+    run_id = database.start_monitor_run(
+        "2026-10-01 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=run_id,
+        finished_at="2026-10-01 03:00:05",
+        status="FAILED",
+        error_message="FAA server unavailable"
+    )
+
+    connection = sqlite3.connect(test_db)
+
+    row = connection.execute(
+        """
+        SELECT
+            status,
+            finished_at,
+            snapshot_date,
+            data_changed,
+            new_flags,
+            resolved_flags,
+            error_message
+        FROM monitor_runs
+        WHERE id = ?
+        """,
+        (run_id,)
+    ).fetchone()
+
+    connection.close()
+
+    assert row == (
+        "FAILED",
+        "2026-10-01 03:00:05",
+        None,
+        None,
+        0,
+        0,
+        "FAA server unavailable"
+    )
+
+def test_get_latest_monitor_run(tmp_path):
+    test_db = tmp_path / "test_monitor_runs.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = test_db
+
+    database.initialize_database()
+
+    first_run = database.start_monitor_run(
+        "2026-10-01 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=first_run,
+        finished_at="2026-10-01 03:00:05",
+        status="SUCCESS",
+        snapshot_date="2026-10-01",
+        data_changed=False
+    )
+
+    second_run = database.start_monitor_run(
+        "2026-10-02 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=second_run,
+        finished_at="2026-10-02 03:00:07",
+        status="SUCCESS",
+        snapshot_date="2026-10-02",
+        data_changed=True,
+        new_flags=3,
+        resolved_flags=1
+    )
+
+    latest = database.get_latest_monitor_run()
+
+    assert latest is not None
+    assert latest["id"] == second_run
+    assert latest["started_at"] == "2026-10-02 03:00:00"
+    assert latest["finished_at"] == "2026-10-02 03:00:07"
+    assert latest["status"] == "SUCCESS"
+    assert latest["snapshot_date"] == "2026-10-02"
+    assert latest["data_changed"] == 1
+    assert latest["new_flags"] == 3
+    assert latest["resolved_flags"] == 1
+    assert latest["error_message"] is None
+
+def test_get_monitor_run_history(tmp_path):
+    test_db = tmp_path / "test_monitor_runs.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = test_db
+
+    database.initialize_database()
+
+    first_run = database.start_monitor_run(
+        "2026-10-01 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=first_run,
+        finished_at="2026-10-01 03:00:05",
+        status="SUCCESS"
+    )
+
+    second_run = database.start_monitor_run(
+        "2026-10-02 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=second_run,
+        finished_at="2026-10-02 03:00:06",
+        status="SUCCESS"
+    )
+
+    third_run = database.start_monitor_run(
+        "2026-10-03 03:00:00"
+    )
+
+    database.finish_monitor_run(
+        run_id=third_run,
+        finished_at="2026-10-03 03:00:07",
+        status="FAILED",
+        error_message="Test failure"
+    )
+
+    history = database.get_monitor_run_history(
+        limit=2
+    )
+
+    assert len(history) == 2
+
+    # Newest should come first
+    assert history[0]["id"] == third_run
+    assert history[0]["status"] == "FAILED"
+    assert history[0]["error_message"] == "Test failure"
+
+    assert history[1]["id"] == second_run
+    assert history[1]["status"] == "SUCCESS"
+
+    

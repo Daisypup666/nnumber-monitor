@@ -1,5 +1,8 @@
 from app.logger import setup_logger
 logger = setup_logger()
+current_run_id = None
+
+from datetime import date, datetime
 
 from app.notifications import (
     build_change_notification,
@@ -28,6 +31,10 @@ from app.database import (
     get_resolved_flags,
     get_flags_detected_on_date,
     get_flags_resolved_on_date,
+    get_latest_monitor_run,
+    start_monitor_run,
+    finish_monitor_run,
+    get_monitor_run_history,
 )
 from app.faa_downloader import (
     #show_data_directory,
@@ -79,7 +86,7 @@ def show_status():
 
     flagged = get_flagged_n_numbers()
     resolved = get_resolved_flags()
-
+    latest_run = get_latest_monitor_run()
     active_count = len(flagged)
 
     registered_count = sum(
@@ -106,6 +113,50 @@ def show_status():
     print(f"Active flags: {active_count}")
     print(f"Registered resolutions: {registered_count}")
     print(f"Returned resolutions: {returned_count}")
+
+    print()
+    print("Last Monitor Run")
+    print("----------------")
+
+    if latest_run is None:
+        print("No monitor runs recorded yet.")
+
+    else:
+        print(f"Started: {latest_run['started_at']}")
+        print(f"Finished: {latest_run['finished_at']}")
+        print(f"Status: {latest_run['status']}")
+
+        if latest_run["snapshot_date"]:
+            print(
+                f"FAA snapshot: "
+                f"{latest_run['snapshot_date']}"
+            )
+
+        if latest_run["data_changed"] is not None:
+            changed = (
+                "Yes"
+                if latest_run["data_changed"]
+                else "No"
+            )
+
+            print(f"Data changed: {changed}")
+
+        print(
+            f"New flags: "
+            f"{latest_run['new_flags']}"
+        )
+
+        print(
+            f"Resolved flags: "
+            f"{latest_run['resolved_flags']}"
+        )
+
+        if latest_run["error_message"]:
+            print(
+                f"Error: "
+                f"{latest_run['error_message']}"
+            )
+
 
 
 def send_change_notification(
@@ -141,13 +192,91 @@ def send_change_notification(
 
     return False
 
+def record_monitor_failure(error):
+    global current_run_id
+
+    if current_run_id is None:
+        return False
+
+    try:
+        finished_at = datetime.now().isoformat(
+            sep=" ",
+            timespec="seconds"
+        )
+
+        finish_monitor_run(
+            run_id=current_run_id,
+            finished_at=finished_at,
+            status="FAILED",
+            error_message=str(error)
+        )
+
+        current_run_id = None
+        return True
+
+    except Exception:
+        logger.exception(
+            "Failed to record monitor failure"
+        )
+        return False
+
+def show_history(limit=10):
+    initialize_database()
+
+    runs = get_monitor_run_history(limit)
+
+    print("\nRecent Monitor Runs")
+    print("-------------------")
+
+    if not runs:
+        print("No monitor runs recorded yet.")
+        return
+
+    for run in runs:
+        print()
+        print(f"Run #{run['id']} - {run['status']}")
+        print(f"Started: {run['started_at']}")
+
+        if run["finished_at"]:
+            print(f"Finished: {run['finished_at']}")
+
+        if run["snapshot_date"]:
+            print(f"FAA snapshot: {run['snapshot_date']}")
+
+        if run["data_changed"] is not None:
+            changed = (
+                "Yes"
+                if run["data_changed"]
+                else "No"
+            )
+
+            print(f"Data changed: {changed}")
+
+        print(
+            f"New flags: {run['new_flags']} | "
+            f"Resolved: {run['resolved_flags']}"
+        )
+
+        if run["error_message"]:
+            print(f"Error: {run['error_message']}")
+
+
+
 def main(notifications_enabled=True):
     logger.info("N-number Monitor started")
-
-
     print("N-number Monitor")
     print("Starting application...")
     initialize_database()
+
+    started_at = datetime.now().isoformat(
+        sep=" ",
+        timespec="seconds"
+    )
+
+    run_id = start_monitor_run(started_at)
+
+    global current_run_id
+    current_run_id = run_id
 
     faa_zip_path, data_changed = check_faa_connection()
 
@@ -491,6 +620,21 @@ def main(notifications_enabled=True):
                 #print("\nTest removed reservations:")
                 #print(details)
 
+    finished_at = datetime.now().isoformat(
+        sep=" ",
+        timespec="seconds"
+    )
+
+    finish_monitor_run(
+        run_id=run_id,
+        finished_at=finished_at,
+        status="SUCCESS",
+        snapshot_date=snapshot_date,
+        data_changed=data_changed,
+        new_flags=len(new_flags),
+        resolved_flags=len(resolved_this_release)
+    )
+    current_run_id = None
     logger.info("N-number Monitor completed successfully")
 
 if __name__ == "__main__":
@@ -514,13 +658,23 @@ if __name__ == "__main__":
         action="store_true",
         help="Send a test Discord notification and exit"
     )
-
+    parser.add_argument(
+        "--history",
+        nargs="?",
+        const=10,
+        type=int,
+        metavar="COUNT",
+        help="Show recent monitor run history (default: 10)"
+    )
 
     args = parser.parse_args()
 
     try:
         if args.status:
             show_status()
+
+        elif args.history is not None:
+            show_history(args.history)
 
         elif args.test_notification:
             test_notification()
@@ -532,6 +686,7 @@ if __name__ == "__main__":
 
     except Exception as e:
         logger.exception("N-number Monitor crashed")
+        record_monitor_failure(e)
 
         failure_message = build_failure_notification(e)
 

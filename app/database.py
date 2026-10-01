@@ -83,10 +83,145 @@ def initialize_database():
          
     """)
 
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS monitor_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            status TEXT NOT NULL,
+            snapshot_date TEXT,
+            data_changed INTEGER,
+            new_flags INTEGER DEFAULT 0,
+            resolved_flags INTEGER DEFAULT 0,
+            error_message TEXT
+        )
+    """)
+
     #CREATE TABLE changes the database, so save the change
     connection.commit()
     #We are finsihed with this connection. 
     connection.close()
+
+def start_monitor_run(started_at):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    cursor = connection.execute(
+        """
+        INSERT INTO monitor_runs (
+            started_at,
+            status
+        )
+        VALUES (?, ?)
+        """,
+        (
+            started_at,
+            "RUNNING"
+        )
+    )
+
+    run_id = cursor.lastrowid
+
+    connection.commit()
+    connection.close()
+
+    return run_id
+
+def finish_monitor_run(
+    run_id,
+    finished_at,
+    status,
+    snapshot_date=None,
+    data_changed=None,
+    new_flags=0,
+    resolved_flags=0,
+    error_message=None
+):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    connection.execute(
+        """
+        UPDATE monitor_runs
+        SET
+            finished_at = ?,
+            status = ?,
+            snapshot_date = ?,
+            data_changed = ?,
+            new_flags = ?,
+            resolved_flags = ?,
+            error_message = ?
+        WHERE id = ?
+        """,
+        (
+            finished_at,
+            status,
+            snapshot_date,
+            data_changed,
+            new_flags,
+            resolved_flags,
+            error_message,
+            run_id
+        )
+    )
+
+    connection.commit()
+    connection.close()
+
+def get_latest_monitor_run():
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    connection.row_factory = sqlite3.Row
+
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            started_at,
+            finished_at,
+            status,
+            snapshot_date,
+            data_changed,
+            new_flags,
+            resolved_flags,
+            error_message
+        FROM monitor_runs
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    connection.close()
+
+    return row
+
+def get_monitor_run_history(limit=10):
+    connection = sqlite3.connect(DATABASE_PATH)
+
+    connection.row_factory = sqlite3.Row
+
+    rows = connection.execute(
+        """
+        SELECT
+            id,
+            started_at,
+            finished_at,
+            status,
+            snapshot_date,
+            data_changed,
+            new_flags,
+            resolved_flags,
+            error_message
+        FROM monitor_runs
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,)
+    ).fetchall()
+
+    connection.close()
+
+    return rows
+
+
 
 #-----------------------------------------------
 #SAVE FAA CANDIDATES

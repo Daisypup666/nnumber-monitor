@@ -1,655 +1,280 @@
 # FAA N-Number Monitor
 
-[![Python Tests](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml)
+[Keep your existing Python Tests / GitHub Actions badge here]
 
+A Python-based monitoring system that tracks changes in FAA aircraft N-number reservation data.
 
-A Python-based monitoring tool that tracks changes in FAA aircraft N-number reservation data.
+The monitor downloads the FAA Releasable Aircraft database, stores reservation snapshots in SQLite, compares releases, identifies N-numbers that disappear from the reservation list, cross-references them against registered aircraft, maintains a watch list, generates reports, and sends Discord notifications for relevant changes.
 
-The application downloads the latest FAA Releasable Aircraft database, stores historical reservation snapshots in SQLite, detects N-numbers that disappear from the reservation list, cross-references them against registered aircraft, maintains a persistent watch list, generates CSV reports, sends Discord notifications for meaningful watch-list changes, and records runtime activity in log files.
-
-The project is designed to run manually or automatically through Windows Task Scheduler.
-
----
-
-## Overview
-
-FAA N-number reservation records can change between database releases.
-
-An N-number disappearing from `RESERVED.txt` does not necessarily mean that it has become available. It may have:
-
-- Been assigned to a registered aircraft
-- Returned to the reservation system
-- Changed status
-- Disappeared from the reservation dataset for another reason
-
-This project maintains historical FAA snapshots so those changes can be detected and investigated automatically.
-
-The basic monitoring workflow is:
-
-```text
-Download FAA database
-        ↓
-Determine FAA snapshot date
-        ↓
-Check whether snapshot was already processed
-        ↓
-Load RESERVED.txt and MASTER.txt
-        ↓
-Store new reservation snapshot in SQLite
-        ↓
-Compare current and previous snapshots
-        ↓
-Detect removed N-numbers
-        ↓
-Cross-reference registered aircraft
-        ↓
-Maintain persistent watch list
-        ↓
-Detect resolved flags
-        ↓
-Generate CSV reports
-        ↓
-Build Discord notification
-        ↓
-Write runtime log
-```
+The project is designed to run automatically on a schedule while maintaining logs and persistent run history for troubleshooting and verification.
 
 ---
 
-## Current Features
+## Features
 
-### FAA Data Retrieval
-
-- Downloads the FAA Releasable Aircraft database
-- Verifies successful FAA HTTP responses
-- Extracts reservation and aircraft registration information
-- Archives FAA releases for historical comparison
-- Retains a configurable number of historical archives
-
-### Reservation Snapshot Tracking
-
-FAA reservation records are stored in SQLite with their associated snapshot date.
-
-This creates a historical record that allows the application to compare FAA releases over time.
-
-Stored information includes:
-
-- N-number
-- Registrant
-- Reservation type
-- Category
-- Purge date
-- Snapshot date
-
-### Previously Processed Snapshot Detection
-
-Before processing a release, the application checks whether its snapshot date already exists in the database.
-
-If the snapshot has already been processed:
-
-- The reservation snapshot is not saved again
-- Watch-list resolution processing is skipped
-- Historical snapshot comparison is skipped
-- Duplicate Discord notifications are prevented
-
-This allows the monitor to run repeatedly without repeatedly processing the same FAA release.
-
-### Snapshot Comparison
-
-When a genuinely new snapshot is detected, the application compares the newest stored reservation snapshot with the previous snapshot.
-
-Example:
-
-```text
-2026-09-29
-      ↓
-2026-09-30
-```
-
-The monitor identifies N-numbers that existed in the previous snapshot but no longer exist in the current reservation data.
-
-### Registered Aircraft Cross-Reference
-
-Removed reservations are checked against FAA registered-aircraft data from `MASTER.txt`.
-
-A removed reservation that now exists as a registered aircraft is classified as:
-
-```text
-REGISTERED AIRCRAFT
-```
-
-A removed reservation that cannot be explained by aircraft registration is classified as:
-
-```text
-FLAG FOR REVIEW
-```
-
-### Persistent Watch List
-
-Unexplained removals are stored in a persistent watch list.
-
-A watch-list entry contains information such as:
-
-```text
-N-number
-Registrant
-Reservation Type
-Category
-Purge Date
-Last Observed
-Detected Date
-Status
-Resolved Date
-```
-
-Active flags remain in the database across future runs.
-
-### Watch-List Resolution
-
-Each new FAA release checks active flags again.
-
-An active flag can transition to:
-
-```text
-FLAGGED
-    ↓
-REGISTERED
-```
-
-if the N-number appears in the FAA registered-aircraft database.
-
-Or:
-
-```text
-FLAGGED
-    ↓
-RETURNED
-```
-
-if the N-number reappears in the FAA reservation list.
-
-Resolved entries remain available in the historical database.
-
-### Duplicate Flag Protection
-
-The database prevents the same active N-number from being repeatedly inserted into the watch list.
-
-This keeps the watch list focused on unique unresolved events.
+- Downloads FAA Releasable Aircraft data
+- Validates downloaded FAA ZIP archives before processing
+- Verifies required `RESERVED.txt` and `MASTER.txt` files
+- Retries failed FAA downloads
+- Archives FAA datasets for comparison
+- Detects changes between FAA releases
+- Stores reservation snapshots in SQLite
+- Detects N-numbers removed from the FAA reservation list
+- Cross-references removed reservations against registered aircraft
+- Flags unexplained reservation removals for review
+- Maintains an active N-number watch list
+- Tracks N-numbers that later become registered
+- Tracks N-numbers that return to the reservation list
+- Maintains resolution history
+- Generates CSV watch-list reports
+- Generates per-release change reports
+- Sends Discord notifications for watch-list changes
+- Automatically splits large Discord notifications into safe message sizes
+- Prevents Discord delivery failures from crashing the FAA processing job
+- Sends Discord failure alerts for monitor crashes
+- Maintains application logs
+- Stores persistent monitor execution history in SQLite
+- Tracks successful and failed monitor runs
+- Records snapshot date and data-change information for each run
+- Records new and resolved flag counts for each run
+- Provides command-line status and history tools
+- Supports unattended execution through Windows Task Scheduler
+- Includes an automated pytest test suite
+- Uses GitHub Actions for continuous integration
 
 ---
 
-## FAA Change Detection
+## How It Works
 
-The monitor includes content-based hashing for files inside FAA ZIP archives.
-
-Rather than relying only on the hash of the entire ZIP container, the application can hash the actual FAA data files:
+The monitor follows this general pipeline:
 
 ```text
-RESERVED.txt
-MASTER.txt
+FAA Releasable Aircraft Database
+            |
+            v
+Download and Validate ZIP
+            |
+            v
+Archive FAA Dataset
+            |
+            v
+Load RESERVED.txt + MASTER.txt
+            |
+            v
+Store Reservation Snapshot
+            |
+            v
+Compare Current vs Previous Snapshot
+            |
+            v
+Find Removed N-Numbers
+            |
+            v
+Cross-Reference MASTER.txt
+        /           \
+       /             \
+Registered       Not Registered
+    |                 |
+    v                 v
+Resolved         Flag for Review
+                      |
+                      v
+                 Active Watch List
+                      |
+            +---------+---------+
+            |                   |
+            v                   v
+      Becomes Registered   Returns to RESERVED
+            |                   |
+            +---------+---------+
+                      |
+                      v
+               Resolution History
 ```
 
-This is useful because ZIP-level differences do not necessarily represent meaningful changes to the underlying FAA data.
-
-The monitor can therefore distinguish between:
-
-```text
-Different ZIP packaging
-        ↓
-Same underlying FAA data
-```
-
-and:
-
-```text
-FAA data contents changed
-        ↓
-Meaningful release difference
-```
-
-Historical snapshot dates stored in SQLite provide an additional safeguard against processing the same release more than once.
-
----
-
-## CSV Reporting
-
-The monitor automatically generates CSV reports in:
-
-```text
-reports/
-```
-
-The reports directory is excluded from Git because these files are generated at runtime.
-
-### Watch-List Report
-
-A full watch-list report is generated for the current snapshot.
-
-Example:
-
-```text
-reports/nnumber_report_2026-09-30.csv
-```
-
-It contains the current active and resolved watch-list state.
-
-### Release Changes Report
-
-The application also generates a report containing changes associated with the current release.
-
-Example:
-
-```text
-reports/nnumber_changes_2026-09-30.csv
-```
-
-This report records newly detected and newly resolved watch-list entries for that release.
-
----
-
-## Discord Notifications
-
-The monitor can send Discord notifications through a webhook.
-
-Notifications are generated for meaningful watch-list changes such as:
-
-- New flagged N-numbers
-- Flags resolved as registered aircraft
-- Flags returned to the reservation system
-
-The notification system is intentionally gated.
-
-```text
-FAA snapshot already processed
-        ↓
-No Discord notification
-```
-
-```text
-New FAA snapshot
-        +
-No watch-list changes
-        ↓
-No Discord notification
-```
-
-```text
-New FAA snapshot
-        +
-Watch-list changes
-        ↓
-Send Discord notification
-```
-
-This prevents repeated scheduled runs from spamming the Discord channel.
-
----
-
-## Runtime Logging
-
-Application activity is written to:
-
-```text
-logs/nnumber_monitor.log
-```
-
-The log records information such as:
-
-- Monitor startup
-- FAA snapshot date
-- New or previously processed snapshots
-- Watch-list totals
-- New flags
-- Resolved flags
-- CSV report generation
-- Successful completion
-- Application errors
-
-Example:
-
-```text
-2026-09-30 12:55:38 | INFO | N-number Monitor started
-2026-09-30 12:55:40 | INFO | New FAA snapshot detected: 2026-09-30
-2026-09-30 12:55:46 | INFO | FAA snapshot date: 2026-09-30
-2026-09-30 12:55:47 | INFO | Watch list summary - Active: 1 | Registered: 0 | Returned: 0
-2026-09-30 12:55:47 | INFO | Release changes - New flags: 0 | Resolved: 0
-2026-09-30 12:55:47 | INFO | N-number Monitor completed successfully
-```
-
-The `logs/` directory is excluded from Git.
-
----
-
-## Automated Scheduling
-
-The monitor can run unattended using Windows Task Scheduler.
-
-A scheduled task can launch the Python interpreter inside the project's virtual environment:
-
-```text
-C:\path\to\Nnumber-monitor\.venv\Scripts\python.exe
-```
-
-with:
-
-```text
-app\main.py
-```
-
-as the argument.
-
-The task's working directory should be the project root:
-
-```text
-C:\path\to\Nnumber-monitor
-```
-
-This is important because the application uses project-relative paths for:
-
-```text
-data/
-reports/
-logs/
-.env
-```
-
-Recommended Task Scheduler settings include:
-
-- Run daily
-- Allow task to be run on demand
-- Run as soon as possible after a missed scheduled start
-- Do not start a second instance if the monitor is already running
-
-A successful scheduled execution should report:
-
-```text
-0x0
-```
-
-in Windows Task Scheduler.
+Each monitor execution is also recorded in SQLite so scheduled runs can be inspected later.
 
 ---
 
 ## Project Structure
 
 ```text
-Nnumber-monitor/
-│
+nnumber-monitor/
+|
+├── .github/
+│   └── workflows/
+│       └── tests.yml
+|
 ├── app/
-│   ├── __init__.py
 │   ├── main.py
 │   ├── database.py
 │   ├── faa_downloader.py
-│   ├── reporting.py
 │   ├── notifications.py
-│   └── logger.py
-│
-├── tests/
-│   ├── test_database.py
-│   ├── test_faa_downloader.py
-│   ├── test_logger.py
-│   ├── test_notifications.py
-│   └── test_reporting.py
-│
+│   ├── logger.py
+│   └── ...
+|
 ├── data/
-│   └── faa_archive/
-│
-├── reports/
+│   ├── faa_archive/
+│   └── nnumber_monitor.db
+|
 ├── logs/
-│
-├── .env
-├── .gitignore
+│   └── nnumber_monitor.log
+|
+├── reports/
+│   └── ...
+|
+├── tests/
+│   └── ...
+|
 ├── README.md
-└── requirements.txt
+├── requirements.txt
+└── ...
 ```
 
-Generated runtime files are intentionally excluded from Git.
+Some generated directories or files may not exist until the application has been run.
 
 ---
 
-## Installation
+## Requirements
 
-### 1. Clone the Repository
+- Python 3
+- Internet access to retrieve FAA data
+- SQLite
+- Discord webhook (optional, for notifications)
+
+Install project dependencies with:
 
 ```bash
-git clone https://github.com/Daisypup666/nnumber-monitor.git
-cd nnumber-monitor
-```
-
-### 2. Create a Virtual Environment
-
-Windows:
-
-```powershell
-python -m venv .venv
-```
-
-Activate it:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-You should then see:
-
-```text
-(.venv)
-```
-
-at the beginning of your terminal prompt.
-
-### 3. Install Dependencies
-
-```powershell
 pip install -r requirements.txt
 ```
-
-The project uses packages including:
-
-```text
-requests
-python-dotenv
-pytest
-```
-
----
-
-## Environment Configuration
-
-Discord credentials are stored in a local `.env` file.
-
-Create:
-
-```text
-.env
-```
-
-in the project root.
-
-Add:
-
-```text
-DISCORD_WEBHOOK_URL=your_webhook_url_here
-```
-
-Do not commit the actual webhook URL.
-
-The `.env` file is excluded through `.gitignore`.
 
 ---
 
 ## Running the Monitor
 
-From the project root with the virtual environment activated:
+The application uses Python package-style execution.
 
-```powershell
-python app/main.py
-```
+Run commands from the root of the repository.
 
-The application will:
-
-1. Initialize the SQLite database
-2. Download/check the current FAA database
-3. Determine the FAA snapshot date
-4. Check whether that snapshot has already been processed
-5. Load reservation and registered-aircraft data
-6. Update active watch-list entries when appropriate
-7. Store a new reservation snapshot when appropriate
-8. Compare new and previous snapshots
-9. Detect removed reservations
-10. Cross-reference registered aircraft
-11. Update the persistent watch list
-12. Generate CSV reports
-13. Build notifications
-14. Send Discord notifications when appropriate
-15. Record the run in the application log
-
----
-
-## Example Output
-
-A new release may produce output similar to:
-
-```text
-N-number Monitor
-Starting application...
-
-FAA response status: 200
-
-Total FAA reservation records: 127740
-
-New FAA snapshot saved.
-
-Snapshot dates:
-['2026-09-30', '2026-09-29', '2026-09-26']
-
-comparing: 2026-09-29 -> 2026-09-30
-
-N-numbers removed from the reservation list: 28
-
---- Comparison Summary ---
-Status: Removed reservations: 28
-Status: Registered aircraft: 28
-Status: Flagged for review: 0
-
---- Watch List Summary ---
-Active flags: 1
-Resolved as registered: 0
-Returned to reservations: 0
-
---- Changes This Release ---
-No watch list changes this release.
-
-CSV report saved: reports/nnumber_report_2026-09-30.csv
-Changes CSV saved: reports/nnumber_changes_2026-09-30.csv
-```
-
-If the snapshot was already processed:
-
-```text
-FAA snapshot 2026-09-30 has already been processed.
-
-Skipping comparison for already processed snapshot 2026-09-30.
-```
-
----
-
-## Database
-
-The application uses SQLite for persistent state.
-
-The database is stored under:
-
-```text
-data/
-```
-
-Database files are excluded from Git.
-
-### Reservation Snapshots
-
-Historical reservation records allow the monitor to compare FAA releases.
-
-Conceptually:
-
-```text
-reservation_snapshots
-
-id
-n_number
-registrant
-reservation_type
-category
-purge_date
-snapshot_date
-```
-
-### Flagged N-Numbers
-
-The persistent watch list stores unexplained removals and their eventual resolution.
-
-Conceptually:
-
-```text
-flagged_n_numbers
-
-id
-n_number
-registrant
-reservation_type
-category
-purge_date
-last_observed
-detected_date
-status
-resolved_date
-```
-
-Possible statuses include:
-
-```text
-FLAGGED
-REGISTERED
-RETURNED
-```
-
-## Command-Line Usage
-
-The FAA N-Number Monitor includes several command-line options for manual operation and troubleshooting.
-
-### Run the Monitor
-
-Run the complete FAA monitoring process:
+### Normal Monitor Run
 
 ```bash
 python -m app.main
 ```
 
-This downloads the latest FAA data, processes reservation changes, updates the watch list, generates reports, and sends notifications when applicable.
+This performs the normal monitoring workflow, including:
+
+- FAA data download
+- ZIP validation
+- Snapshot processing
+- Database updates
+- Reservation comparison
+- Watch-list updates
+- CSV report generation
+- Logging
+- Discord notifications when applicable
+- Monitor run-history recording
+
+---
+
+## Command-Line Usage
 
 ### View Monitor Status
 
-Display the current monitor status without downloading new FAA data:
+Display the current monitor state without downloading new FAA data:
 
 ```bash
 python -m app.main --status
 ```
 
-This displays stored snapshot information and the current watch-list status without modifying the database.
+Status information includes snapshot information, active and resolved watch-list counts, and information about the latest recorded monitor execution.
 
-### Run Without Routine Notifications
+Example:
 
-Run the complete monitor while suppressing routine Discord notifications:
+```text
+FAA N-Number Monitor Status
+---------------------------
+Snapshots stored: 5
+Latest snapshot: 2026-10-01
+
+Active flags: 1
+Registered resolutions: 2
+Returned resolutions: 0
+
+Last Monitor Run
+----------------
+Started: 2026-10-01 15:20:03
+Finished: 2026-10-01 15:20:08
+Status: SUCCESS
+FAA snapshot: 2026-10-01
+Data changed: No
+New flags: 0
+Resolved flags: 0
+```
+
+### View Monitor Run History
+
+Display the 10 most recent monitor executions:
+
+```bash
+python -m app.main --history
+```
+
+Specify the number of runs to display:
+
+```bash
+python -m app.main --history 5
+```
+
+or:
+
+```bash
+python -m app.main --history 20
+```
+
+Run history can include:
+
+- Run ID
+- Start time
+- Finish time
+- Success or failure status
+- FAA snapshot date
+- Whether FAA data changed
+- New flag count
+- Resolved flag count
+- Error information for failed runs
+
+Example:
+
+```text
+Recent Monitor Runs
+-------------------
+
+Run #5 - SUCCESS
+Started: 2026-10-01 15:20:03
+Finished: 2026-10-01 15:20:08
+FAA snapshot: 2026-10-01
+Data changed: No
+New flags: 0 | Resolved: 0
+
+Run #4 - FAILED
+Started: 2026-10-01 03:00:02
+Finished: 2026-10-01 03:00:08
+New flags: 0 | Resolved: 0
+Error: FAA server unavailable
+```
+
+### Run Without Routine Discord Notifications
 
 ```bash
 python -m app.main --no-notify
 ```
 
+This runs the complete monitor while suppressing routine watch-list Discord notifications.
+
 Operational failure alerts remain enabled so unexpected monitor failures can still be reported.
 
 ### Test Discord Notifications
-
-Verify the Discord webhook configuration without running the FAA monitor:
 
 ```bash
 python -m app.main --test-notification
@@ -657,318 +282,276 @@ python -m app.main --test-notification
 
 This sends a clearly labeled test message to the configured Discord webhook and exits without processing FAA data.
 
-## Automated Testing
+### View CLI Help
 
-The project currently includes **16 automated tests**.
-
-The test suite covers behavior including:
-
-- Resolving a flag as registered
-- Resolving a flag as returned
-- Duplicate flag prevention
-- Removed-reservation detection
-- No removals when snapshots match
-- Existing snapshot detection
-- Watch-list CSV generation
-- Release-change CSV generation
-- Notification generation when a new flag appears
-- Notification generation when a flag resolves
-- No notification when nothing changes
-- Discord webhook sending behavior
-- Safe handling when no webhook is configured
-- Runtime logging
-- Identical FAA ZIP-member content hashing
-- Changed FAA ZIP-member content detection
-
-Run all tests with:
-
-```powershell
-python -m pytest -v
+```bash
+python -m app.main --help
 ```
 
-Expected result:
+---
+
+## Watch-List Logic
+
+When an N-number disappears from `RESERVED.txt`, the monitor checks whether that N-number appears in the registered aircraft data.
+
+If the N-number is registered, the removal is treated as a registered aircraft rather than an unexplained disappearance.
+
+If the N-number is not registered, it can be added to the active watch list for continued monitoring.
+
+On future FAA releases, active flags are checked again.
+
+A flagged N-number can eventually be resolved as:
 
 ```text
-16 passed
+REGISTERED
 ```
 
-The tests use temporary data where appropriate so the production FAA database and reports are not modified.
-
----
-
-## Git-Ignored Runtime Data
-
-Runtime and local-environment files should not be committed.
-
-The project ignores files/directories such as:
-
-```gitignore
-# SQLite database
-data/*.db
-data/*.db-shm
-data/*.db-wal
-
-# Reports
-reports/
-
-# Runtime logs
-logs/
-
-# Environment / secrets
-.env
-
-# Virtual environment
-.venv/
-
-# Python cache
-__pycache__/
-*.pyc
-
-# VS Code
-.vscode/
-```
-
-FAA archive handling can be adjusted depending on whether historical source ZIP files should remain local or be preserved elsewhere.
-
----
-
-## Development Workflow
-
-A typical development cycle is:
+if it appears as a registered aircraft, or:
 
 ```text
-Make code change
-      ↓
-Run monitor manually
-      ↓
-Run automated tests
-      ↓
-Inspect generated output/logs
-      ↓
-git status
-      ↓
-Commit
-      ↓
-Push to GitHub
+RETURNED
 ```
 
-Before committing:
+if it appears in the reservation list again.
 
-```powershell
-python -m pytest -v
+Otherwise, it remains:
+
+```text
+FLAGGED
 ```
-
-Then inspect:
-
-```powershell
-git status
-```
-
-This helps ensure runtime files, logs, reports, secrets, and local databases are not accidentally committed.
 
 ---
 
-## Architecture
+## Discord Notifications
 
-The project separates responsibilities across several modules.
+Discord notifications are intended for meaningful watch-list activity rather than every routine monitor execution.
 
-### `main.py`
+Routine notifications may be generated when watch-list changes are detected, such as new flags or resolutions.
 
-Coordinates the monitoring workflow.
+The monitor also supports operational failure notifications when the application encounters an unexpected error.
 
-Responsibilities include:
+Large notifications are automatically split into multiple Discord messages to remain within Discord message-size limits.
 
-- Application startup
-- Snapshot processing
-- Watch-list lifecycle
-- Historical comparisons
-- Reporting
-- Notifications
-- Runtime logging
+A Discord delivery failure is logged without causing an otherwise successful FAA processing run to be treated as failed.
 
-### `faa_downloader.py`
+The Discord webhook should be stored in an environment variable:
 
-Handles FAA data retrieval and parsing.
+```text
+DISCORD_WEBHOOK_URL
+```
 
-Responsibilities include:
+Do not commit webhook URLs or tokens to the repository.
 
-- FAA downloads
-- Archive handling
-- Snapshot-date extraction
-- Reservation loading
-- Registered-aircraft loading
-- File hashing
-- FAA content-change detection
+---
 
-### `database.py`
+## Reports
 
-Handles SQLite persistence.
+The monitor generates CSV reports containing current watch-list information and changes associated with FAA releases.
 
-Responsibilities include:
+Reports include:
 
-- Database initialization
-- Reservation snapshots
-- Snapshot history
-- Removed-reservation queries
-- Watch-list persistence
-- Flag status updates
+- Active flagged N-numbers
+- Resolved N-numbers
+- New flags
+- Resolution information
+- Release-specific changes
+
+Generated reports are stored in the project's report directory.
+
+---
+
+## Database
+
+The project uses SQLite for persistent state.
+
+The database stores information such as:
+
+- FAA reservation snapshots
+- Full FAA reservation snapshots
+- Flagged N-numbers
+- Resolution status
+- Monitor execution history
+
+Monitor history records can include:
+
+```text
+id
+started_at
+finished_at
+status
+snapshot_date
+data_changed
+new_flags
+resolved_flags
+error_message
+```
+
+This makes it possible to verify whether unattended monitor executions actually occurred and whether they completed successfully.
+
+---
+
+## Logging
+
+Application activity is written to:
+
+```text
+logs/nnumber_monitor.log
+```
+
+Logging provides additional information for troubleshooting scheduled or unattended executions.
+
+Examples of logged events include:
+
+- Monitor startup
+- FAA snapshot detection
 - Watch-list summaries
-
-### `reporting.py`
-
-Handles CSV generation.
-
-Responsibilities include:
-
-- Full watch-list reports
-- Per-release change reports
-
-### `notifications.py`
-
-Handles notification generation and delivery.
-
-Responsibilities include:
-
-- Building human-readable change notifications
-- Reading Discord configuration from the environment
-- Sending Discord webhook messages
-- Safely handling missing webhook configuration
-
-### `logger.py`
-
-Handles application logging.
-
-Responsibilities include:
-
-- Creating the runtime log directory
-- Configuring the application logger
-- Formatting timestamps and log levels
-- Writing monitor activity to disk
+- Release changes
+- Report generation
+- Discord delivery failures
+- Monitor crashes
+- Successful monitor completion
 
 ---
 
-## Design Goals
+## Automated Scheduling
 
-This project is intended to demonstrate more than a one-off data script.
+The monitor can run unattended through Windows Task Scheduler.
 
-The architecture focuses on:
+The application should be executed using package-style execution.
 
-- Historical state tracking
-- Persistent SQLite storage
-- Automated data retrieval
-- Change detection
-- Data normalization
-- State transitions
-- Reporting
-- Notifications
-- Scheduled execution
-- Runtime observability
-- Automated testing
-- Safe secret management
-- Modular Python design
+Example configuration:
+
+```text
+Program/script:
+C:\path\to\nnumber-monitor\.venv\Scripts\python.exe
+
+Arguments:
+-m app.main
+
+Start in:
+C:\path\to\nnumber-monitor
+```
+
+For unattended execution, Task Scheduler can be configured to:
+
+- Run whether the user is logged on or not
+- Wake the computer to run the task
+- Run the task as soon as possible after a scheduled start is missed
+
+The current project is designed to support a daily scheduled monitor run.
+
+Run history can then be checked with:
+
+```bash
+python -m app.main --history 5
+```
 
 ---
 
-## Future Development
+## Testing
+
+Run the complete automated test suite with:
+
+```bash
+python -m pytest -v
+```
+
+The project currently includes **36 automated tests** covering functionality such as:
+
+- Database operations
+- Reservation snapshots
+- Flag creation
+- Flag resolution
+- FAA download handling
+- Retry behavior
+- FAA ZIP validation
+- Logging
+- Discord notifications
+- Large Discord message splitting
+- Discord failure isolation
+- CLI status output
+- Notification controls
+- Monitor run creation
+- Successful run completion
+- Failed run completion
+- Latest-run retrieval
+- Run-history retrieval
+- Run-history limits
+
+---
+
+## Continuous Integration
+
+GitHub Actions automatically runs the pytest suite on repository pushes and pull requests.
+
+The workflow:
+
+```text
+Push / Pull Request
+        |
+        v
+GitHub Actions
+        |
+        v
+Create Ubuntu Environment
+        |
+        v
+Install Python
+        |
+        v
+Install Dependencies
+        |
+        v
+Run pytest
+        |
+        v
+Pass / Fail
+```
+
+The status badge at the top of this README reflects the current CI test status.
+
+---
+
+## Reliability
+
+Several safeguards are included to make unattended monitoring safer:
+
+- FAA download retries
+- HTTP error handling
+- Required-file ZIP validation
+- Dataset archiving
+- Duplicate snapshot protection
+- Persistent SQLite state
+- Structured application logging
+- Discord failure notifications
+- Discord message-size handling
+- Isolation of notification delivery failures
+- Successful and failed run-history tracking
+- Automated pytest coverage
+- GitHub Actions CI
+
+---
+
+## Development Status
+
+This project is under active development.
+
+Current functionality focuses on reliable FAA dataset monitoring, persistent state, automated comparison, watch-list tracking, reporting, notifications, scheduled execution, and operational history.
 
 Potential future improvements include:
 
-### Notification Improvements
-
-- Rich Discord embeds
-- More detailed new-flag information
-- Failure notifications
-- Notification retry handling
-
-### Monitoring Improvements
-
-- Better distinction between FAA release changes and previously processed releases
-- More detailed release metadata
-- Additional validation of downloaded FAA files
-- More robust handling of FAA download failures
-
-### Reporting Improvements
-
-- Summary statistics
-- Historical trend reports
-- JSON exports
-- HTML reports
-
-### Application Improvements
-
-- Command-line arguments
-- Configurable archive retention
-- Configurable report directory
-- Configurable logging level
-- Structured application configuration
-
-### Deployment
-
-- GitHub Actions or another automated execution environment
-- Containerized deployment
-- Cloud-hosted scheduled execution
-- Health monitoring
-
-### User Interface
-
-A future dashboard could provide:
-
-- Active watch-list entries
-- Resolved N-numbers
-- Snapshot history
-- Search by N-number
-- Historical status changes
-- Report downloads
+- Expanded run-history reporting
+- Database backup and maintenance tools
+- Additional CLI controls
+- Improved report summaries
+- Web-based monitoring dashboard
+- Deployment to an always-on environment
+- Additional notification integrations
 
 ---
 
-## Security
+## Disclaimer
 
-Sensitive configuration such as Discord webhook URLs must not be committed to the repository.
+This project is an independent software project and is not affiliated with or endorsed by the Federal Aviation Administration.
 
-Secrets are stored locally using:
-
-```text
-.env
-```
-
-and excluded through:
-
-```gitignore
-.env
-```
-
-If a webhook URL is ever accidentally committed to Git, the webhook should be revoked and replaced.
-
----
-
-## Data Source
-
-This project operates on publicly released FAA aircraft registration and N-number reservation data.
-
-The monitor is an independent software project and is not affiliated with or endorsed by the FAA.
-
----
-
-## Status
-
-Current development milestone:
-
-```text
-FAA download                    COMPLETE
-Reservation parsing             COMPLETE
-SQLite snapshot storage         COMPLETE
-Historical comparison           COMPLETE
-Registered-aircraft lookup      COMPLETE
-Persistent watch list           COMPLETE
-Flag resolution                 COMPLETE
-CSV reporting                   COMPLETE
-Discord notifications           COMPLETE
-Runtime logging                 COMPLETE
-Windows scheduled execution     COMPLETE
-Duplicate snapshot protection   COMPLETE
-FAA content hashing             COMPLETE
-Automated testing               16 PASSING
-```
-
-The project is now capable of operating as a scheduled local monitoring service while maintaining historical state, reports, notifications, and runtime logs.
+FAA data should be treated according to the terms, limitations, and update schedules provided by the FAA. Monitor results should be verified against official FAA sources when used for decision-making.

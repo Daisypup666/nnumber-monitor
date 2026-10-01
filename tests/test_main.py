@@ -135,3 +135,111 @@ def test_discord_failure_does_not_crash_monitor(
     )
 
     assert result is False
+
+def test_record_monitor_failure(monkeypatch):
+    recorded = {}
+
+    def fake_finish_monitor_run(**kwargs):
+        recorded.update(kwargs)
+
+    monkeypatch.setattr(
+        main,
+        "finish_monitor_run",
+        fake_finish_monitor_run
+    )
+
+    main.current_run_id = 42
+
+    error = RuntimeError("FAA exploded")
+
+    result = main.record_monitor_failure(error)
+
+    assert result is True
+
+    assert recorded["run_id"] == 42
+    assert recorded["status"] == "FAILED"
+    assert recorded["error_message"] == "FAA exploded"
+    assert recorded["finished_at"] is not None
+
+    assert main.current_run_id is None
+
+def test_show_history(monkeypatch, capsys):
+    monkeypatch.setattr(
+        main,
+        "initialize_database",
+        lambda: None
+    )
+
+    fake_runs = [
+        {
+            "id": 2,
+            "started_at": "2026-10-02 03:00:00",
+            "finished_at": "2026-10-02 03:00:08",
+            "status": "SUCCESS",
+            "snapshot_date": "2026-10-02",
+            "data_changed": 1,
+            "new_flags": 2,
+            "resolved_flags": 1,
+            "error_message": None
+        },
+        {
+            "id": 1,
+            "started_at": "2026-10-01 03:00:00",
+            "finished_at": "2026-10-01 03:00:05",
+            "status": "FAILED",
+            "snapshot_date": None,
+            "data_changed": None,
+            "new_flags": 0,
+            "resolved_flags": 0,
+            "error_message": "FAA server unavailable"
+        }
+    ]
+
+    monkeypatch.setattr(
+        main,
+        "get_monitor_run_history",
+        lambda limit=10: fake_runs
+    )
+
+    main.show_history()
+
+    output = capsys.readouterr().out
+
+    assert "Recent Monitor Runs" in output
+
+    assert "Run #2 - SUCCESS" in output
+    assert "FAA snapshot: 2026-10-02" in output
+    assert "Data changed: Yes" in output
+    assert "New flags: 2 | Resolved: 1" in output
+
+    assert "Run #1 - FAILED" in output
+    assert "Error: FAA server unavailable" in output
+
+def test_show_history_respects_limit(
+    monkeypatch,
+    capsys
+):
+    requested_limits = []
+
+    def fake_get_history(limit=10):
+        requested_limits.append(limit)
+        return []
+
+    monkeypatch.setattr(
+        main,
+        "initialize_database",
+        lambda: None
+    )
+
+    monkeypatch.setattr(
+        main,
+        "get_monitor_run_history",
+        fake_get_history
+    )
+
+    main.show_history(5)
+
+    capsys.readouterr()
+
+    assert requested_limits == [5]
+
