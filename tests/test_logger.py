@@ -1,5 +1,5 @@
 import app.logger as logger_module
-
+import logging
 
 def test_setup_logger_creates_log_file(tmp_path, monkeypatch):
     test_log = tmp_path / "nnumber_monitor.log"
@@ -15,6 +15,12 @@ def test_setup_logger_creates_log_file(tmp_path, monkeypatch):
         "LOG_FILE",
         test_log
     )
+
+    existing_logger = logging.getLogger("nnumber_monitor")
+
+    for handler in existing_logger.handlers[:]:
+        existing_logger.removeHandler(handler)
+        handler.close()
 
     logger = logger_module.setup_logger()
 

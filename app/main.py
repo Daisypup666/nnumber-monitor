@@ -1,16 +1,16 @@
-from logger import setup_logger
+from app.logger import setup_logger
 logger = setup_logger()
 
-from notifications import (
+from app.notifications import (
     build_change_notification,
     send_discord_notification,
     build_failure_notification,
 )
-from reporting import (
+from app.reporting import (
     export_watch_list_csv,
     export_release_changes_csv,
 )
-from database import (
+from app.database import (
     initialize_database,
     #save_candidates,
     #count_snapshots,
@@ -29,7 +29,7 @@ from database import (
     get_flags_detected_on_date,
     get_flags_resolved_on_date,
 )
-from faa_downloader import (
+from app.faa_downloader import (
     #show_data_directory,
     #list_zip_contents,
     #preview_reserved_data,
@@ -43,6 +43,8 @@ from faa_downloader import (
     #preview_master_data,
     load_registered_n_numbers,
 )
+import argparse
+
 #from pathlib import Path
 
 def import_archived_snapshot(zip_path):
@@ -57,6 +59,40 @@ def import_archived_snapshot(zip_path):
 
     #print("Archived snapshot imported.")
 
+def show_status():
+    initialize_database()
+
+    snapshot_dates = get_snapshot_dates()
+
+    flagged = get_flagged_n_numbers()
+    resolved = get_resolved_flags()
+
+    active_count = len(flagged)
+
+    registered_count = sum(
+        1 for flag in resolved
+        if flag[7] == "REGISTERED"
+    )
+
+    returned_count = sum(
+        1 for flag in resolved
+        if flag[7] == "RETURNED"
+    )
+
+    print("\nFAA N-Number Monitor Status")
+    print("---------------------------")
+
+    print(f"Snapshots stored: {len(snapshot_dates)}")
+
+    if snapshot_dates:
+        print(f"Latest snapshot: {snapshot_dates[0]}")
+    else:
+        print("Latest snapshot: None")
+
+    print()
+    print(f"Active flags: {active_count}")
+    print(f"Registered resolutions: {registered_count}")
+    print(f"Returned resolutions: {returned_count}")
 
 def main():
     logger.info("N-number Monitor started")
@@ -413,8 +449,23 @@ def main():
     logger.info("N-number Monitor completed successfully")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="FAA N-Number Monitor"
+    )
+
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show monitor status without running an FAA check"
+    )
+
+    args = parser.parse_args()
+
     try:
-        main()
+        if args.status:
+            show_status()
+        else:
+            main()
 
     except Exception as e:
         logger.exception("N-number Monitor crashed")
@@ -429,4 +480,3 @@ if __name__ == "__main__":
             )
 
         raise
-
