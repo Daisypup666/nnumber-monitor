@@ -1,5 +1,8 @@
 # FAA N-Number Monitor
 
+[![Python Tests](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml)
+
+
 A Python-based monitoring tool that tracks changes in FAA aircraft N-number reservation data.
 
 The application downloads the latest FAA Releasable Aircraft database, stores historical reservation snapshots in SQLite, detects N-numbers that disappear from the reservation list, cross-references them against registered aircraft, maintains a persistent watch list, generates CSV reports, sends Discord notifications for meaningful watch-list changes, and records runtime activity in log files.
