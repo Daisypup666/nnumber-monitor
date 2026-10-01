@@ -94,7 +94,27 @@ def show_status():
     print(f"Registered resolutions: {registered_count}")
     print(f"Returned resolutions: {returned_count}")
 
-def main():
+
+def send_change_notification(
+    notification_message,
+    data_changed,
+    notifications_enabled=True
+):
+    if (
+        notifications_enabled
+        and data_changed
+        and notification_message
+    ):
+        print("\n--- Notification ---")
+        print(notification_message)
+
+        if send_discord_notification(notification_message):
+            print("Discord notification sent.")
+            return True
+
+    return False
+
+def main(notifications_enabled=True):
     logger.info("N-number Monitor started")
 
 
@@ -405,13 +425,11 @@ def main():
     logger.info("Watch list report saved: %s", report_path)
     logger.info("Release changes report saved: %s", changes_report_path)
 
-    if data_changed and notification_message:
-        print("\n--- Notification ---")
-        print(notification_message)
-
-        if send_discord_notification(notification_message):
-            print("Discord notification sent.")
-
+    send_change_notification(
+        notification_message,
+        data_changed,
+        notifications_enabled
+    )
 
     # checks canidates in the zip file downloaded
         #save_candidates(candidates)
@@ -459,13 +477,23 @@ if __name__ == "__main__":
         help="Show monitor status without running an FAA check"
     )
 
+    parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="Run the monitor without sending Discord notifications"
+        )
+
+
+
     args = parser.parse_args()
 
     try:
         if args.status:
             show_status()
         else:
-            main()
+            main(
+                notifications_enabled=not args.no_notify
+            )
 
     except Exception as e:
         logger.exception("N-number Monitor crashed")

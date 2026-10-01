@@ -613,6 +613,20 @@ REGISTERED
 RETURNED
 ```
 
+## Command-Line Usage
+
+Run the FAA N-Number Monitor normally:
+
+```bash
+python -m app.main
+
+Display the current monitor status without downloading new FAA data:
+python -m app.main --status
+
+Run the full monitor while suppressing routine Discord notifications:
+python -m app.main --no-notify
+
+The --no-notify option suppresses routine watch-list notifications. Operational failure alerts remain enabled so unexpected monitor failures can still be reported.
 ---
 
 ## Automated Testing
