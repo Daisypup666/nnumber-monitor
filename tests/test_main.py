@@ -1,4 +1,5 @@
 import app.main as main
+from pathlib import Path
 
 
 def test_show_status(monkeypatch, capsys):
@@ -31,6 +32,12 @@ def test_show_status(monkeypatch, capsys):
         main,
         "get_resolved_flags",
         lambda: []
+    )
+
+    monkeypatch.setattr(
+        main,
+        "get_latest_monitor_run",
+        lambda: None
     )
 
     main.show_status()
@@ -301,4 +308,137 @@ def test_prepare_database_backup_no_database(
 
     assert result is None
     assert cleanup_called == []
+
+def test_show_backups(monkeypatch, capsys, tmp_path):
+    first_backup = (
+        tmp_path /
+        "nnumber_monitor_2026-10-01_17-30-00.db"
+    )
+
+    second_backup = (
+        tmp_path /
+        "nnumber_monitor_2026-09-30_17-30-00.db"
+    )
+
+    first_backup.write_bytes(b"a" * 100)
+    second_backup.write_bytes(b"b" * 50)
+
+    monkeypatch.setattr(
+        main,
+        "get_database_backups",
+        lambda: [
+            first_backup,
+            second_backup
+        ]
+    )
+
+    main.show_backups()
+
+    output = capsys.readouterr().out
+
+    assert "Database Backups" in output
+
+    assert (
+        "1. nnumber_monitor_2026-10-01_17-30-00.db "
+        "(100 bytes)"
+        in output
+    )
+
+    assert (
+        "2. nnumber_monitor_2026-09-30_17-30-00.db "
+        "(50 bytes)"
+        in output
+    )
+
+def test_show_backups_when_empty(
+    monkeypatch,
+    capsys
+):
+    monkeypatch.setattr(
+        main,
+        "get_database_backups",
+        lambda: []
+    )
+
+    main.show_backups()
+
+    output = capsys.readouterr().out
+
+    assert "Database Backups" in output
+    assert "No database backups found." in output
+
+def test_restore_backup_by_number(
+    monkeypatch,
+    tmp_path,
+    capsys
+):
+    backup_1 = tmp_path / "newest.db"
+    backup_2 = tmp_path / "older.db"
+
+    backup_1.touch()
+    backup_2.touch()
+
+    monkeypatch.setattr(
+        main,
+        "get_database_backups",
+        lambda: [backup_1, backup_2]
+    )
+
+    restored = []
+
+    def fake_restore_database_backup(path):
+        restored.append(path)
+
+        return {
+            "database_path": tmp_path / "live.db",
+            "emergency_backup": tmp_path / "emergency.db"
+        }
+
+    monkeypatch.setattr(
+        main,
+        "restore_database_backup",
+        fake_restore_database_backup
+    )
+
+    result = main.restore_backup_by_number(2)
+
+    output = capsys.readouterr().out
+
+    assert result is True
+    assert restored == [backup_2]
+    assert "older.db" in output
+    assert "Database restored successfully." in output
+    assert "emergency.db" in output
+
+def test_restore_backup_by_number_invalid(
+    monkeypatch,
+    capsys
+):
+    monkeypatch.setattr(
+        main,
+        "get_database_backups",
+        lambda: [
+            Path("backup_1.db"),
+            Path("backup_2.db")
+        ]
+    )
+
+    restore_called = []
+
+    def fake_restore(path):
+        restore_called.append(path)
+
+    monkeypatch.setattr(
+        main,
+        "restore_database_backup",
+        fake_restore
+    )
+
+    result = main.restore_backup_by_number(3)
+
+    output = capsys.readouterr().out
+
+    assert result is False
+    assert restore_called == []
+    assert "Invalid backup number." in output
 

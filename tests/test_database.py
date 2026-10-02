@@ -1,6 +1,7 @@
 import app.database as database
 import sqlite3
 import os
+import pytest
 
 def test_flag_can_be_resolved_as_registered(tmp_path):
     # Use a temporary database instead of the real one
@@ -577,4 +578,356 @@ def test_cleanup_database_backups(tmp_path):
 
     # Oldest backup should have been removed
     assert "nnumber_monitor_00.db" not in remaining_names
+
+def test_get_database_backups_newest_first(
+    tmp_path
+):
+    backup_dir = tmp_path / "backups"
+
+    database.BACKUP_DIR = backup_dir
+
+    backup_dir.mkdir()
+
+    for number in range(3):
+        backup_path = (
+            backup_dir /
+            f"nnumber_monitor_{number}.db"
+        )
+
+        backup_path.write_text(
+            f"backup {number}"
+        )
+
+        timestamp = 1000 + number
+
+        os.utime(
+            backup_path,
+            (timestamp, timestamp)
+        )
+
+    backups = database.get_database_backups()
+
+    assert len(backups) == 3
+
+    assert backups[0].name == (
+        "nnumber_monitor_2.db"
+    )
+
+    assert backups[1].name == (
+        "nnumber_monitor_1.db"
+    )
+
+    assert backups[2].name == (
+        "nnumber_monitor_0.db"
+    )
+
+def validate_database_backup(backup_path):
+    backup_path = Path(backup_path)
+
+    if not backup_path.exists():
+        return False
+
+    if not backup_path.is_file():
+        return False
+
+    try:
+        connection = sqlite3.connect(backup_path)
+
+        result = connection.execute(
+            "PRAGMA integrity_check"
+        ).fetchone()
+
+        connection.close()
+
+        return (
+            result is not None
+            and result[0] == "ok"
+        )
+
+    except sqlite3.Error:
+        return False
+
+def test_validate_database_backup_valid(
+    tmp_path
+):
+    backup_path = tmp_path / "valid_backup.db"
+
+    connection = sqlite3.connect(backup_path)
+
+    connection.execute(
+        """
+        CREATE TABLE test_data (
+            id INTEGER PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        INSERT INTO test_data (value)
+        VALUES (?)
+        """,
+        ("hello",)
+    )
+
+    connection.commit()
+    connection.close()
+
+    assert (
+        database.validate_database_backup(
+            backup_path
+        )
+        is True
+    )
+
+def test_validate_database_backup_invalid(
+    tmp_path
+):
+    backup_path = tmp_path / "invalid_backup.db"
+
+    backup_path.write_text(
+        "this is definitely not sqlite"
+    )
+
+    assert (
+        database.validate_database_backup(
+            backup_path
+        )
+        is False
+    )
+
+def test_restore_database_backup(tmp_path):
+    live_db = tmp_path / "live.db"
+    backup_db = tmp_path / "backup.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = live_db
+
+    # Create the current/live database.
+    live_connection = sqlite3.connect(live_db)
+
+    live_connection.execute(
+        """
+        CREATE TABLE test_data (
+            id INTEGER PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+    live_connection.execute(
+        """
+        INSERT INTO test_data (value)
+        VALUES (?)
+        """,
+        ("current data",)
+    )
+
+    live_connection.commit()
+    live_connection.close()
+
+    # Create the backup database containing older data.
+    backup_connection = sqlite3.connect(backup_db)
+
+    backup_connection.execute(
+        """
+        CREATE TABLE test_data (
+            id INTEGER PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+    backup_connection.execute(
+        """
+        INSERT INTO test_data (value)
+        VALUES (?)
+        """,
+        ("restored data",)
+    )
+
+    backup_connection.commit()
+    backup_connection.close()
+
+    result = database.restore_database_backup(
+        backup_db
+    )
+
+    assert result["database_path"] == live_db
+    assert result["emergency_backup"] is not None
+    assert result["emergency_backup"].exists()
+
+    # Verify the LIVE database now contains
+    # the data from the backup.
+    connection = sqlite3.connect(live_db)
+
+    row = connection.execute(
+        """
+        SELECT value
+        FROM test_data
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert row == ("restored data",)
+
+def test_restore_database_backup_rejects_invalid(
+    tmp_path
+):
+    live_db = tmp_path / "live.db"
+    invalid_backup = tmp_path / "corrupt.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = live_db
+    database.BACKUP_DIR = tmp_path / "backups"
+    
+    # Create a valid live database.
+    connection = sqlite3.connect(live_db)
+
+    connection.execute(
+        """
+        CREATE TABLE test_data (
+            id INTEGER PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        INSERT INTO test_data (value)
+        VALUES (?)
+        """,
+        ("important live data",)
+    )
+
+    connection.commit()
+    connection.close()
+
+    # This is NOT a valid SQLite database.
+    invalid_backup.write_text(
+        "definitely not a sqlite database"
+    )
+
+    with pytest.raises(ValueError):
+        database.restore_database_backup(
+            invalid_backup
+        )
+
+    # Make sure the live database was untouched.
+    connection = sqlite3.connect(live_db)
+
+    row = connection.execute(
+        """
+        SELECT value
+        FROM test_data
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert row == ("important live data",)
+
+def test_restore_database_creates_emergency_backup(
+    tmp_path
+):
+    live_db = tmp_path / "live.db"
+    restore_db = tmp_path / "restore.db"
+
+    database.DATA_DIR = tmp_path
+    database.DATABASE_PATH = live_db
+    database.BACKUP_DIR = tmp_path / "backups"
+
+    # Create the current live database.
+    connection = sqlite3.connect(live_db)
+
+    connection.execute(
+        """
+        CREATE TABLE test_data (
+            id INTEGER PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        INSERT INTO test_data (value)
+        VALUES (?)
+        """,
+        ("original live data",)
+    )
+
+    connection.commit()
+    connection.close()
+
+    # Create the database we want to restore.
+    connection = sqlite3.connect(restore_db)
+
+    connection.execute(
+        """
+        CREATE TABLE test_data (
+            id INTEGER PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+
+    connection.execute(
+        """
+        INSERT INTO test_data (value)
+        VALUES (?)
+        """,
+        ("restored data",)
+    )
+
+    connection.commit()
+    connection.close()
+
+    result = database.restore_database_backup(
+        restore_db
+    )
+
+    emergency_backup = result["emergency_backup"]
+
+    assert emergency_backup is not None
+    assert emergency_backup.exists()
+
+    # The emergency backup should contain
+    # the database state BEFORE the restore.
+    connection = sqlite3.connect(
+        emergency_backup
+    )
+
+    emergency_row = connection.execute(
+        """
+        SELECT value
+        FROM test_data
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert emergency_row == (
+        "original live data",
+    )
+
+    # The live database should now contain
+    # the restored data.
+    connection = sqlite3.connect(live_db)
+
+    live_row = connection.execute(
+        """
+        SELECT value
+        FROM test_data
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert live_row == (
+        "restored data",
+    )
 

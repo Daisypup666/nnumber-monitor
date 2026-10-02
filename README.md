@@ -4,9 +4,9 @@
 
 A Python-based monitoring system that tracks changes in FAA aircraft N-number reservation data.
 
-The monitor downloads the FAA Releasable Aircraft database, stores reservation snapshots in SQLite, compares releases, identifies N-numbers that disappear from the reservation list, cross-references them against registered aircraft, maintains a watch list, generates reports, and sends Discord notifications for relevant changes.
+The monitor downloads FAA Releasable Aircraft data, stores reservation snapshots in SQLite, compares releases, identifies N-numbers that disappear from the reservation list, cross-references them against registered aircraft, maintains a persistent watch list, generates reports, and sends Discord notifications for meaningful changes.
 
-The project is designed to run automatically on a schedule while maintaining logs, database backups, and persistent run history for troubleshooting and verification.
+The project is designed for unattended operation while maintaining logs, database backups, restore capabilities, and persistent run history for troubleshooting and verification.
 
 ---
 
@@ -14,7 +14,7 @@ The project is designed to run automatically on a schedule while maintaining log
 
 - Downloads FAA Releasable Aircraft data
 - Validates downloaded FAA ZIP archives before processing
-- Verifies required FAA data files before processing
+- Verifies required FAA data files
 - Retries failed FAA downloads
 - Archives FAA datasets for comparison
 - Detects changes between FAA releases
@@ -28,20 +28,23 @@ The project is designed to run automatically on a schedule while maintaining log
 - Maintains resolution history
 - Generates CSV watch-list reports
 - Generates per-release change reports
-- Sends Discord notifications for watch-list changes
-- Automatically splits large Discord notifications into safe message sizes
+- Sends Discord notifications for meaningful watch-list changes
+- Automatically splits large Discord notifications
 - Prevents Discord delivery failures from crashing FAA processing
-- Sends Discord failure alerts for monitor crashes
-- Maintains application logs
-- Stores persistent monitor execution history in SQLite
+- Sends Discord alerts when the monitor fails
+- Maintains structured application logs
+- Stores persistent monitor execution history
 - Tracks successful and failed monitor runs
-- Records snapshot date and data-change information for each run
-- Records new and resolved flag counts for each run
-- Provides command-line status and history tools
-- Automatically backs up the SQLite database before monitor processing
+- Records snapshot dates and data-change information
+- Records new and resolved flag counts
+- Provides status and historical run inspection
+- Automatically backs up SQLite before monitor processing
 - Uses SQLite's backup API for safe database backups
 - Retains the 14 most recent database backups
-- Automatically removes older database backups
+- Automatically removes older backups
+- Validates backups before restoration
+- Creates an emergency backup before restoring a database
+- Supports database recovery from the command line
 - Supports unattended execution through Windows Task Scheduler
 - Includes an automated pytest test suite
 - Uses GitHub Actions for continuous integration
@@ -50,7 +53,7 @@ The project is designed to run automatically on a schedule while maintaining log
 
 ## How It Works
 
-The monitor follows this general pipeline:
+The core monitoring pipeline is:
 
 ```text
 FAA Releasable Aircraft Database
@@ -62,7 +65,7 @@ Download and Validate ZIP
 Archive FAA Dataset
             |
             v
-Load RESERVED.txt + MASTER.txt
+Load FAA Data
             |
             v
 Store Reservation Snapshot
@@ -74,35 +77,35 @@ Compare Current vs Previous Snapshot
 Find Removed N-Numbers
             |
             v
-Cross-Reference MASTER.txt
-        /           \
-       /             \
-Registered       Not Registered
-    |                 |
-    v                 v
-Resolved         Flag for Review
-                      |
-                      v
-                 Active Watch List
-                      |
-            +---------+---------+
-            |                   |
-            v                   v
-      Becomes Registered   Returns to RESERVED
-            |                   |
-            +---------+---------+
-                      |
-                      v
-               Resolution History
+Cross-Reference Registered Aircraft
+        /                 \
+       /                   \
+Registered             Not Registered
+    |                       |
+    v                       v
+Resolved               Flag for Review
+                            |
+                            v
+                       Active Watch List
+                            |
+                  +---------+---------+
+                  |                   |
+                  v                   v
+           Becomes Registered   Returns to RESERVED
+                  |                   |
+                  +---------+---------+
+                            |
+                            v
+                     Resolution History
 ```
 
-Each monitor execution is also recorded in SQLite so scheduled runs can be inspected later.
+Each execution is also recorded in SQLite so unattended runs can be inspected later.
 
 ---
 
 ## Monitor Startup Flow
 
-Before processing a new FAA release, the monitor protects the existing application state.
+A normal monitor execution protects the existing application state before processing new FAA data.
 
 ```text
 Monitor Starts
@@ -134,7 +137,7 @@ Process Snapshot
 Record Results       Record Error
 ```
 
-This ensures a database recovery point exists before a normal monitor run begins modifying stored data.
+This creates a recovery point before a normal monitor run modifies persistent data.
 
 ---
 
@@ -172,7 +175,7 @@ nnumber-monitor/
 └── ...
 ```
 
-Some generated directories and files may not exist until the application has been run.
+Some generated directories and files may not exist until the application has run.
 
 ---
 
@@ -181,7 +184,7 @@ Some generated directories and files may not exist until the application has bee
 - Python 3
 - Internet access to retrieve FAA data
 - SQLite
-- Discord webhook (optional, for notifications)
+- Discord webhook for notifications
 
 Install project dependencies with:
 
@@ -189,42 +192,62 @@ Install project dependencies with:
 pip install -r requirements.txt
 ```
 
+Run commands from the root directory of the repository.
+
 ---
 
-## Running the Monitor
+# Running the Monitor
 
-The application uses Python package-style execution.
-
-Run commands from the root of the repository.
-
-### Normal Monitor Run
+## Normal Monitor Run
 
 ```bash
 python -m app.main
 ```
 
-A normal monitor run performs:
+A normal run performs:
 
-- Database initialization
-- SQLite database backup
-- Backup retention cleanup
-- Monitor run-history creation
-- FAA data download
-- FAA ZIP validation
-- Snapshot processing
-- Database updates
-- Reservation comparison
-- Watch-list updates
-- CSV report generation
-- Logging
-- Discord notifications when applicable
-- Monitor run-history completion
+```text
+Database initialization
+        |
+        v
+Database backup
+        |
+        v
+Backup retention cleanup
+        |
+        v
+Run-history creation
+        |
+        v
+FAA download
+        |
+        v
+Dataset validation
+        |
+        v
+Snapshot processing
+        |
+        v
+Reservation comparison
+        |
+        v
+Watch-list processing
+        |
+        v
+Report generation
+        |
+        v
+Notifications
+        |
+        v
+Run-history completion
+```
 
 ---
 
-## Command-Line Usage
+# Command-Line Usage
 
-### View Monitor Status
+## Monitor Status
 
 Display the current monitor state without downloading new FAA data:
 
@@ -232,7 +255,16 @@ Display the current monitor state without downloading new FAA data:
 python -m app.main --status
 ```
 
-Status information includes snapshot information, active and resolved watch-list counts, and information about the latest recorded monitor execution.
+Status information includes:
+
+- Stored snapshots
+- Latest snapshot
+- Active flags
+- Registered resolutions
+- Returned resolutions
+- Latest monitor execution
+- Data-change information
+- New and resolved flag counts
 
 Example:
 
@@ -257,7 +289,9 @@ New flags: 0
 Resolved flags: 0
 ```
 
-### View Monitor Run History
+---
+
+## Monitor Run History
 
 Display the 10 most recent monitor executions:
 
@@ -265,7 +299,7 @@ Display the 10 most recent monitor executions:
 python -m app.main --history
 ```
 
-Specify the number of runs to display:
+Specify the number of runs:
 
 ```bash
 python -m app.main --history 5
@@ -282,12 +316,12 @@ Run history can include:
 - Run ID
 - Start time
 - Finish time
-- Success or failure status
+- Success/failure status
 - FAA snapshot date
 - Whether FAA data changed
-- New flag count
-- Resolved flag count
-- Error information for failed runs
+- New flags
+- Resolved flags
+- Failure information
 
 Example:
 
@@ -309,25 +343,97 @@ New flags: 0 | Resolved: 0
 Error: FAA server unavailable
 ```
 
-### Run Without Routine Discord Notifications
+---
+
+## List Database Backups
+
+Display available database backups:
+
+```bash
+python -m app.main --backups
+```
+
+Backups are displayed newest first and assigned a number.
+
+Example:
+
+```text
+Database Backups
+----------------
+1. nnumber_monitor_2026-10-01_17-30-00.db (20,480 bytes)
+2. nnumber_monitor_2026-10-01_16-55-23.db (20,480 bytes)
+3. nnumber_monitor_2026-10-01_16-20-41.db (20,480 bytes)
+```
+
+The backup number can then be used with the restore command.
+
+---
+
+## Restore a Database Backup
+
+First list available backups:
+
+```bash
+python -m app.main --backups
+```
+
+Then select the backup to restore:
+
+```bash
+python -m app.main --restore-backup 2
+```
+
+The restore system:
+
+```text
+Selected Backup
+      |
+      v
+Verify Backup Exists
+      |
+      v
+SQLite Integrity Check
+      |
+      v
+Create Emergency Backup
+of Current Live Database
+      |
+      v
+Restore Selected Backup
+      |
+      v
+Live Database Replaced
+```
+
+An invalid backup number is rejected without modifying the live database.
+
+A missing or invalid SQLite backup is also rejected before restoration begins.
+
+---
+
+## Run Without Routine Notifications
 
 ```bash
 python -m app.main --no-notify
 ```
 
-This runs the complete monitor while suppressing routine watch-list Discord notifications.
+This suppresses routine watch-list Discord notifications.
 
-Operational failure alerts remain enabled so unexpected monitor failures can still be reported.
+Operational failure alerts remain available so unexpected monitor failures can still be reported.
 
-### Test Discord Notifications
+---
+
+## Test Discord Notifications
 
 ```bash
 python -m app.main --test-notification
 ```
 
-This sends a clearly labeled test message to the configured Discord webhook and exits without processing FAA data.
+This sends a clearly labeled test notification and exits without processing FAA data.
 
-### View CLI Help
+---
+
+## CLI Help
 
 ```bash
 python -m app.main --help
@@ -335,31 +441,63 @@ python -m app.main --help
 
 ---
 
-## Watch-List Logic
+# Watch-List Logic
 
-When an N-number disappears from `RESERVED.txt`, the monitor checks whether that N-number appears in the registered aircraft data.
+When an N-number disappears from the FAA reservation data, the monitor checks whether the N-number appears in registered aircraft data.
 
-If the N-number is registered, the removal is treated as a registered aircraft rather than an unexplained disappearance.
+### Registered
 
-If the N-number is not registered, it can be added to the active watch list for continued monitoring.
+If the N-number is now associated with a registered aircraft, it is treated as a registration resolution.
 
-On future FAA releases, active flags are checked again.
+```text
+RESERVED
+   |
+   v
+Removed
+   |
+   v
+Registered Aircraft
+   |
+   v
+REGISTERED
+```
 
-A flagged N-number can eventually be resolved as:
+### Unexplained Removal
+
+If the N-number is not registered, it can be added to the active watch list.
+
+```text
+RESERVED
+   |
+   v
+Removed
+   |
+   v
+Not Registered
+   |
+   v
+FLAGGED
+```
+
+### Future Resolution
+
+Flagged N-numbers continue to be checked during later FAA releases.
+
+They can eventually become:
 
 ```text
 REGISTERED
 ```
 
-if it appears as a registered aircraft, or:
+if associated with an aircraft, or:
 
 ```text
 RETURNED
 ```
 
-if it appears in the reservation list again.
+if they reappear in the reservation data.
 
-Otherwise, it remains:
+Otherwise they remain:
 
 ```text
 FLAGGED
@@ -367,25 +505,24 @@ FLAGGED
 
 ---
 
-## Discord Notifications
+# Discord Notifications
 
-Discord notifications are intended for meaningful watch-list activity rather than every routine monitor execution.
+Discord notifications are intended for meaningful watch-list activity rather than every routine execution.
 
-Routine notifications may be generated when watch-list changes are detected, such as:
+Notifications may be generated when:
 
-- New N-numbers flagged for review
-- Previously flagged N-numbers becoming registered
-- Previously flagged N-numbers returning to the reservation list
+- New N-numbers are flagged
+- Flagged N-numbers become registered
+- Flagged N-numbers return to the reservation list
+- The monitor encounters an operational failure
 
-The monitor also supports operational failure notifications when the application encounters an unexpected error.
+Large notifications are automatically divided into smaller messages to remain within safe Discord message limits.
 
-Large notifications are automatically split into multiple Discord messages to remain within safe message-size limits.
+Discord delivery errors are isolated from FAA processing. A notification failure therefore does not automatically cause an otherwise successful monitor run to be classified as failed.
 
-A Discord delivery failure is logged without causing an otherwise successful FAA processing run to be treated as failed.
+## Configuration
 
-### Discord Configuration
-
-The Discord webhook should be stored in an environment variable:
+The webhook is stored using the environment variable:
 
 ```text
 DISCORD_WEBHOOK_URL
@@ -393,7 +530,7 @@ DISCORD_WEBHOOK_URL
 
 Webhook URLs and tokens should never be committed to the repository.
 
-You can verify the configured webhook with:
+Verify the configured webhook with:
 
 ```bash
 python -m app.main --test-notification
@@ -401,37 +538,40 @@ python -m app.main --test-notification
 
 ---
 
-## Reports
+# Reports
 
-The monitor generates CSV reports containing current watch-list information and changes associated with FAA releases.
+The monitor generates CSV reports containing watch-list and FAA release information.
 
-Reports include:
+Reports can include:
 
 - Active flagged N-numbers
 - Resolved N-numbers
-- New flags
-- Resolution information
+- Newly flagged N-numbers
+- Registration resolutions
+- Returned reservation resolutions
 - Release-specific changes
 
 Generated reports are stored in the project's report directory.
 
 ---
 
-## Database
+# Database
 
 The project uses SQLite for persistent application state.
 
-The database stores information such as:
+Stored information includes:
 
-- FAA reservation snapshots
+- Reservation snapshots
 - Full FAA reservation snapshots
 - Flagged N-numbers
 - Resolution status
 - Monitor execution history
 
-### Monitor Run History
+---
 
-Monitor execution records can include:
+## Monitor Run History
+
+Monitor execution records can contain:
 
 ```text
 id
@@ -445,7 +585,7 @@ resolved_flags
 error_message
 ```
 
-A run begins with:
+A normal execution begins as:
 
 ```text
 RUNNING
@@ -463,62 +603,93 @@ or:
 FAILED
 ```
 
-Failed runs can store the associated error message.
+Failed executions can store the associated error message.
 
-This makes it possible to verify whether unattended monitor executions actually occurred and whether they completed successfully.
+This allows unattended scheduled executions to be verified later.
 
 ---
 
-## Database Backups
+# Database Backups
 
-Before a normal monitor run begins processing FAA data, the application creates a backup of the current SQLite database.
+Before normal FAA processing begins, the application creates a backup of the current SQLite database.
 
-Backups are stored in:
+Backups are stored under:
 
 ```text
 data/backups/
 ```
 
-Backup filenames contain a timestamp:
+Example:
 
 ```text
 nnumber_monitor_2026-10-01_16-55-23.db
 ```
 
-The application uses SQLite's built-in backup API rather than directly copying an active database file.
+The backup process uses SQLite's built-in backup API rather than directly copying an active database file.
 
-### Backup Lifecycle
+## Backup Retention
+
+The monitor retains the **14 most recent database backups**.
 
 ```text
-Current SQLite Database
-          |
-          v
-SQLite Backup API
-          |
-          v
-Timestamped Backup
-          |
-          v
-data/backups/
-          |
-          v
-Retention Cleanup
-          |
-          v
-Keep 14 Newest Backups
+Newest backup      KEEP
+       |
+       v
+...
+       |
+       v
+Backup #14         KEEP
+Backup #15         DELETE
+Backup #16         DELETE
+...
 ```
 
-The monitor automatically retains the **14 most recent backups**.
+Older backups are automatically removed.
 
-Backups older than the retention limit are removed automatically to prevent unnecessary storage growth.
-
-If no database exists yet, the backup process safely returns without preventing the monitor from starting.
-
-The backup system provides a recovery point if a future FAA import, application error, or database issue damages the working database.
+If no database exists yet, backup creation safely returns without preventing application startup.
 
 ---
 
-## Logging
+# Database Recovery
+
+Backups can be restored using the command-line recovery tools.
+
+Before restoration, the selected backup is checked using SQLite's integrity-check functionality.
+
+If validation fails:
+
+```text
+Validation Failure
+       |
+       v
+Restore Aborted
+       |
+       v
+Live Database Untouched
+```
+
+If validation succeeds, the current live database is first backed up.
+
+```text
+Current Live Database
+         |
+         v
+Emergency Backup
+         |
+         v
+Selected Backup Restored
+         |
+         v
+New Live Database
+```
+
+The emergency backup preserves the database state immediately before restoration.
+
+This provides a rollback point if the selected restore is not the desired state.
+
+---
+
+# Logging
 
 Application activity is written to:
 
@@ -526,13 +697,11 @@ Application activity is written to:
 logs/nnumber_monitor.log
 ```
 
-Logging provides additional information for troubleshooting scheduled and unattended executions.
-
-Examples of logged events include:
+Logged activity can include:
 
 - Monitor startup
 - Database backup creation
-- Old backup cleanup
+- Backup cleanup
 - FAA snapshot detection
 - Watch-list summaries
 - Release changes
@@ -543,11 +712,9 @@ Examples of logged events include:
 
 ---
 
-## Automated Scheduling
+# Automated Scheduling
 
 The monitor can run unattended through Windows Task Scheduler.
-
-The application should be executed using package-style execution.
 
 Example configuration:
 
@@ -562,35 +729,39 @@ Start in:
 C:\path\to\nnumber-monitor
 ```
 
-For unattended execution, Task Scheduler can be configured to:
+Useful Task Scheduler options include:
 
 - Run whether the user is logged on or not
 - Wake the computer to run the task
 - Run the task as soon as possible after a scheduled start is missed
 
-The current project is designed to support a daily scheduled monitor run.
-
-Run history can then be checked with:
+After an unattended execution, monitor history can be checked with:
 
 ```bash
 python -m app.main --history 5
 ```
 
-This provides a quick way to verify that scheduled executions occurred without manually inspecting Task Scheduler.
+This provides an application-level record that the scheduled execution actually occurred.
 
 ---
 
-## Testing
+# Testing
 
-Run the complete automated test suite with:
+Run the complete test suite with:
 
 ```bash
 python -m pytest -v
 ```
 
-The project currently includes **40 automated tests**.
+The project currently includes:
 
-Test coverage includes functionality such as:
+```text
+50 passed
+```
+
+## Test Coverage
+
+Automated tests cover functionality including:
 
 - Database initialization
 - Reservation snapshots
@@ -602,35 +773,41 @@ Test coverage includes functionality such as:
 - FAA ZIP validation
 - Logging
 - Discord notifications
-- Discord notification controls
+- Notification controls
 - Large Discord message splitting
-- Discord delivery failure isolation
+- Discord failure isolation
 - CLI status output
-- Discord test notifications
 - Monitor run creation
-- Successful monitor run completion
-- Failed monitor run completion
+- Successful run completion
+- Failed run completion
 - Failure recording
 - Latest-run retrieval
 - Run-history retrieval
 - Run-history limits
-- SQLite database backup creation
+- SQLite backup creation
 - Backup data integrity
 - Automatic backup retention
 - Backup startup integration
 - Missing-database backup handling
+- Backup discovery
+- Backup CLI output
+- Empty backup handling
+- SQLite backup validation
+- Corrupt backup rejection
+- Database restoration
+- Emergency pre-restore backup creation
+- Restore backup selection
+- Invalid restore selection protection
 
 ---
 
-## Continuous Integration
+# Continuous Integration
 
 GitHub Actions automatically runs the pytest suite when changes are pushed to the repository.
 
-Current workflow status:
-
 [![Python Tests](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml/badge.svg)](https://github.com/Daisypup666/nnumber-monitor/actions/workflows/tests.yml)
 
-The workflow performs the general process:
+The workflow follows the general process:
 
 ```text
 Push / Pull Request
@@ -654,42 +831,46 @@ Run pytest
 Pass / Fail
 ```
 
-This helps catch regressions before new changes are treated as stable.
+This helps detect regressions as the monitor evolves.
 
 ---
 
-## Reliability
+# Reliability
 
-Several safeguards are included to make unattended monitoring safer:
+The project includes multiple safeguards for unattended operation:
 
 - FAA download retries
 - HTTP error handling
-- Required-file ZIP validation
+- FAA ZIP validation
 - Dataset archiving
 - Duplicate snapshot protection
 - Persistent SQLite state
-- Automatic SQLite backups before processing
+- Automatic database backups
 - SQLite-safe backup creation
-- Automatic backup retention
+- Backup retention
 - Old-backup cleanup
+- Backup integrity validation
+- Corrupt backup rejection
+- Emergency pre-restore backups
+- Safe database restoration
 - Structured application logging
 - Discord failure notifications
 - Discord message-size handling
-- Isolation of notification delivery failures
-- Successful and failed run-history tracking
+- Notification failure isolation
+- Successful and failed run tracking
 - Persistent failure information
 - Automated pytest coverage
 - GitHub Actions continuous integration
 
 ---
 
-## Development Status
+# Development Status
 
 This project is under active development.
 
 Current functionality focuses on:
 
-- Reliable FAA dataset monitoring
+- FAA dataset monitoring
 - Persistent snapshot storage
 - Automated release comparison
 - N-number watch-list tracking
@@ -698,23 +879,24 @@ Current functionality focuses on:
 - Discord notifications
 - Scheduled execution
 - Monitor run history
-- Database recovery protection
+- Automatic database protection
+- Database recovery
 - Automated testing
 - Continuous integration
 
 Potential future improvements include:
 
-- Database restore tooling
-- Expanded run-history reporting
-- Additional CLI controls
-- Improved report summaries
+- Improved N-number candidate analysis
+- Historical trend analysis
+- Better report summaries
 - Web-based monitoring dashboard
-- Deployment to an always-on environment
+- Always-on deployment
 - Additional notification integrations
+- Expanded data visualization
 
 ---
 
-## Disclaimer
+# Disclaimer
 
 This project is an independent software project and is not affiliated with or endorsed by the Federal Aviation Administration.
 

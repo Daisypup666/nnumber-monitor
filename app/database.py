@@ -56,6 +56,17 @@ def cleanup_database_backups(keep=14):
 
     return len(old_backups)
 
+def get_database_backups():
+    if not BACKUP_DIR.exists():
+        return []
+
+    backups = sorted(
+        BACKUP_DIR.glob("nnumber_monitor_*.db"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True
+    )
+
+    return backups
 
 #-----------------------------------------------
 #CREAE/ INITALIZE DATABASE
@@ -604,4 +615,55 @@ def get_flags_resolved_on_date(resolved_date):
     connection.close()
 
     return rows
+
+def validate_database_backup(backup_path):
+    backup_path = Path(backup_path)
+
+    if not backup_path.exists():
+        return False
+
+    if not backup_path.is_file():
+        return False
+
+    try:
+        connection = sqlite3.connect(backup_path)
+
+        result = connection.execute(
+            "PRAGMA integrity_check"
+        ).fetchone()
+
+        connection.close()
+
+        return (
+            result is not None
+            and result[0] == "ok"
+        )
+
+    except sqlite3.Error:
+        return False
+
+def restore_database_backup(backup_path):
+    backup_path = Path(backup_path)
+
+    if not validate_database_backup(backup_path):
+        raise ValueError(
+            "Backup is missing or is not a valid SQLite database."
+        )
+
+    # Protect the current live database before restoring.
+    emergency_backup = backup_database()
+
+    source = sqlite3.connect(backup_path)
+    destination = sqlite3.connect(DATABASE_PATH)
+
+    try:
+        source.backup(destination)
+    finally:
+        destination.close()
+        source.close()
+
+    return {
+        "database_path": DATABASE_PATH,
+        "emergency_backup": emergency_backup
+    }
 

@@ -37,6 +37,8 @@ from app.database import (
     get_monitor_run_history,
     backup_database,
     cleanup_database_backups,
+    get_database_backups,
+    restore_database_backup,
 )
 from app.faa_downloader import (
     #show_data_directory,
@@ -159,7 +161,47 @@ def show_status():
                 f"{latest_run['error_message']}"
             )
 
+def show_backups():
+    backups = get_database_backups()
 
+    print("\nDatabase Backups")
+    print("----------------")
+
+    if not backups:
+        print("No database backups found.")
+        return
+
+    for number, backup in enumerate(
+        backups,
+        start=1
+    ):
+        size_bytes = backup.stat().st_size
+
+        print(
+            f"{number}. {backup.name} "
+            f"({size_bytes:,} bytes)"
+        )
+
+def show_backups():
+    backups = get_database_backups()
+
+    print("\nDatabase Backups")
+    print("----------------")
+
+    if not backups:
+        print("No database backups found.")
+        return
+
+    for number, backup in enumerate(
+        backups,
+        start=1
+    ):
+        size_bytes = backup.stat().st_size
+
+        print(
+            f"{number}. {backup.name} "
+            f"({size_bytes:,} bytes)"
+        )
 
 def send_change_notification(
     notification_message,
@@ -661,6 +703,48 @@ def main(notifications_enabled=True):
     current_run_id = None
     logger.info("N-number Monitor completed successfully")
 
+def restore_backup_by_number(backup_number):
+    backups = get_database_backups()
+
+    if not backups:
+        print("No database backups found.")
+        return False
+
+    if backup_number < 1 or backup_number > len(backups):
+        print(
+            f"Invalid backup number. "
+            f"Choose 1-{len(backups)}."
+        )
+        return False
+
+    selected_backup = backups[
+        backup_number - 1
+    ]
+
+    print()
+    print(
+        f"Restoring database from: "
+        f"{selected_backup.name}"
+    )
+
+    result = restore_database_backup(
+        selected_backup
+    )
+
+    print("Database restored successfully.")
+
+    emergency_backup = result[
+        "emergency_backup"
+    ]
+
+    if emergency_backup:
+        print(
+            "Pre-restore backup created: "
+            f"{emergency_backup.name}"
+        )
+
+    return True
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="FAA N-Number Monitor"
@@ -690,6 +774,21 @@ if __name__ == "__main__":
         metavar="COUNT",
         help="Show recent monitor run history (default: 10)"
     )
+    parser.add_argument(
+        "--backups",
+        action="store_true",
+        help="List available database backups and exit"
+    )
+
+    parser.add_argument(
+    "--restore-backup",
+    type=int,
+    metavar="NUMBER",
+    help=(
+        "Restore a database backup by number "
+        "from --backups"
+    )
+)
 
     args = parser.parse_args()
 
@@ -699,6 +798,14 @@ if __name__ == "__main__":
 
         elif args.history is not None:
             show_history(args.history)
+
+        elif args.backups:
+            show_backups()
+
+        elif args.restore_backup is not None:
+            restore_backup_by_number(
+                args.restore_backup
+    )  
 
         elif args.test_notification:
             test_notification()
